@@ -1,2 +1,44 @@
-# gas-personal-dashboard
-基於 Google Apps Script 與 Google 試算表打造的個人視覺化工作儀表板。
+# 📱 個人視覺化工作儀表板 (Personal Workspace Dashboard)
+
+一個基於 **Google Apps Script** 與 **Google 試算表** 打造的輕量、現代化個人工作儀表板 Web App。整合 Google 日曆、外部 iCal、專案進度追蹤與待辦事項管理。
+
+---
+
+## ✨ 核心特色
+* 📊 **首屏一覽無遺**：Banner 搭配 4 大 KPI 統計卡（總專案數、待辦任務、今日行程、完成率）。
+* 🚀 **各專案進度條**：自動依據檢核表計算各專案進度與完成百分比。
+* 📝 **快速新增任務**：首頁直接填單，支援自動判定優先級（7天內自動標記為高優先級）。
+* 📑 **頁籤式工作台 (Tabs)**：
+  * **今日待辦事項**：聚焦當日需完成的任務。
+  * **今日日曆行程**：整合 Google 主要日曆與外部 iCal 行程，進行中行程具備呼吸發光特效。
+  * **未來待辦清單**：附帶 **專案下拉篩選器**，並支援點擊上方進度條自動跳轉過濾。
+  * **已完成清單**：清晰追蹤已完成事項，支援一鍵點擊還原。
+
+---
+
+## 🚀 3 分鐘快速啟用教學（給使用者）
+
+1. **建立試算表副本**：點擊 [👉 取得試算表範本（一鍵複製）](https://docs.google.com/spreadsheets/d/您的試算表ID/copy)
+2. **初始化分頁與公式**：
+   * 等待試算表上方工具列出現 **`📱 工作儀表板 App`** 選單。
+   * 點選 **`🚀 1-Click 一鍵最佳化分頁與公式`** 並完成 Google 帳號安全性授權。
+3. **部署專屬 Web App**：
+   * 點選上方選單 **「擴充功能」 ➔ 「Apps Script」**。
+   * 點擊右上角 **「部署」 ➔ 「新增部署作業」**。
+   * 類型選擇 **「網頁應用程式 (Web App)」**。
+   * **執行身分**：選擇 `我`。
+   * **誰可以存取**：選擇 `僅限我自己`。
+   * 點擊「部署」，並複製產生的 **網頁應用程式網址** 即可開始使用！
+
+---
+
+## 🛠️ 技術架構
+* **前端 (Frontend)**：HTML5, Bootstrap 5.3, Bootstrap Icons, Vanilla JavaScript
+* **後端 (Backend)**：Google Apps Script (GAS)
+* **資料庫 (Database)**：Google Sheets (試算表)
+* **服務整合 (Integration)**：Google Calendar API, iCal Parser
+
+---
+
+## 📄 開源授權
+本專案採用 [MIT License](LICENSE) 授權開源。
