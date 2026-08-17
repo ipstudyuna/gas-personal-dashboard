@@ -1,5 +1,5 @@
 /**
- * 個人視覺化工作儀表板 Web App (v4.5 - 開源範本版)
+ * 個人視覺化工作儀表板 Web App (v4.6 - 開源範本版)
  */
 
 const DEFAULT_COLORS = ['#0d6efd', '#198754', '#6f42c1', '#fd7e14', '#0dcaf0', '#d63384'];
@@ -72,7 +72,7 @@ function testExternalCalendarAccess() {
 }
 
 /**
- * 1-Click 一鍵最佳化試算表分頁與公式
+ * 1-Click 一鍵最佳化試算表分頁與公式（支援第 12 欄重複週期）
  */
 function setupDashboardTabs() {
   const ss = getSpreadsheet();
@@ -107,11 +107,16 @@ function setupDashboardTabs() {
   // 2. 📋 專案檢核表
   const taskSheet = ss.getSheetByName('📋 專案檢核表');
   if (taskSheet.getLastRow() === 0) {
-    taskSheet.getRange('A1:K1').setValues([
-      ['任務ID', '專案名稱', '子項目/階段', '任務內容', '負責類別', '優先級', '開始日期', '截止日期', '狀態', '進度/勾選', '備註']
+    taskSheet.getRange('A1:L1').setValues([
+      ['任務ID', '專案名稱', '子項目/階段', '任務內容', '負責類別', '優先級', '開始日期', '截止日期', '狀態', '進度/勾選', '備註', '重複週期']
     ]).setFontWeight('bold').setBackground('#E8F0FE');
     taskSheet.getRange('F2:F500').setDataValidation(priorityRule);
     taskSheet.getRange('I2:I500').setDataValidation(statusRule);
+  } else {
+    // 若已有檢核表，自動補齊 L1 欄位標題
+    if (!taskSheet.getRange('L1').getValue()) {
+      taskSheet.getRange('L1').setValue('重複週期').setFontWeight('bold').setBackground('#E8F0FE');
+    }
   }
 
   // 3. 📊 總覽儀表板
@@ -141,7 +146,7 @@ function setupDashboardTabs() {
   });
 
   if (SpreadsheetApp.getUi()) {
-    SpreadsheetApp.getUi().alert('🎉 試算表結構與公式已初始化完成！');
+    SpreadsheetApp.getUi().alert('🎉 試算表結構與公式已初始化完成（支援重複性任務）！');
   }
 }
 
@@ -156,6 +161,35 @@ function calculatePriority(dueDateStr) {
  
   if (diffDays <= 7) return '高';
   return '中';
+}
+
+function calculateNextDueDate(baseDueDateStr, recurrence) {
+  let baseDate = new Date();
+  if (baseDueDateStr && baseDueDateStr.trim() !== '') {
+    const parts = baseDueDateStr.split('-');
+    if (parts.length === 3) {
+      baseDate = new Date(parseInt(parts[0], 10), parseInt(parts, 10) - 1, parseInt(parts, 10));
+    }
+  }
+  
+  const nextDate = new Date(baseDate.getTime());
+  
+  if (recurrence === '每週' || recurrence.includes('週')) {
+    nextDate.setDate(nextDate.getDate() + 7);
+  } else if (recurrence === '每月' || recurrence.includes('月')) {
+    const origDay = baseDate.getDate();
+    nextDate.setMonth(nextDate.getMonth() + 1);
+    if (nextDate.getDate() !== origDay) {
+      nextDate.setDate(0); // 避免月底天數溢位，自動調整為目標月份最後一天
+    }
+  } else if (recurrence === '每年' || recurrence.includes('年')) {
+    nextDate.setFullYear(nextDate.getFullYear() + 1);
+  } else {
+    return '';
+  }
+  
+  const tz = Session.getScriptTimeZone() || "Asia/Taipei";
+  return Utilities.formatDate(nextDate, tz, "yyyy-MM-dd");
 }
 
 function parseIcsDateString(dtStr) {
@@ -430,13 +464,14 @@ function getWebAppDataJson() {
     }
   } catch (err) {}
 
-  // 4. 讀取專案檢核表
+  // 4. 讀取專案檢核表（支援第 12 欄重複週期）
   try {
     const ss = getSpreadsheet();
     const taskSheet = ss.getSheetByName("📋 專案檢核表");
    
     if (taskSheet && taskSheet.getLastRow() > 1) {
-      const displayData = taskSheet.getRange(2, 1, taskSheet.getLastRow() - 1, 11).getDisplayValues();
+      const maxCols = Math.max(12, taskSheet.getLastColumn());
+      const displayData = taskSheet.getRange(2, 1, taskSheet.getLastRow() - 1, maxCols).getDisplayValues();
      
       let allTasks = [];
       const projectMap = {};
@@ -444,7 +479,7 @@ function getWebAppDataJson() {
 
       displayData.forEach((rawRow, i) => {
         const cleanedRow = rawRow.map(val => String(val || "").trim());
-        const [cTaskId, cProject, cSubItem, cTitle, cCategory, cPriority, cStart, cDueDate, cStatus] = cleanedRow;
+        const [cTaskId, cProject, cSubItem, cTitle, cCategory, cPriority, cStart, cDueDate, cStatus, cCheck, cRemarks, cRecurrence] = cleanedRow;
 
         if (cProject && cTitle && cProject !== "FALSE" && cTitle !== "FALSE") {
           const autoPriority = calculatePriority(cDueDate);
@@ -466,7 +501,9 @@ function getWebAppDataJson() {
             priority: autoPriority,
             dueDate: cDueDate || "",
             status: cStatus || "未開始",
-            isDone: isCompleted
+            isDone: isCompleted,
+            recurrence: cRecurrence || "無",
+            remarks: cRemarks || ""
           };
           allTasks.push(taskObj);
 
@@ -560,7 +597,8 @@ function addNewTaskFromWeb(form) {
       form.dueDate || '',
       '未開始',
       false,
-      form.remarks || ''
+      form.remarks || '',
+      form.recurrence || '無'
     ]);
 
     return '✅ 任務已成功新增至【📋 專案檢核表】！';
@@ -578,6 +616,40 @@ function toggleTaskStatus(rowIndex, newStatus) {
     taskSheet.getRange(rowIndex, 9).setValue(newStatus);
     if (newStatus === '已完成') {
       taskSheet.getRange(rowIndex, 10).setValue(true);
+
+      // 檢查是否為重複性任務
+      const rowValues = taskSheet.getRange(rowIndex, 1, 1, 12).getDisplayValues()[0];
+      const pName = rowValues;
+      const subItem = rowValues;
+      const taskTitle = rowValues;
+      const category = rowValues;
+      const dueDateStr = rowValues[7];
+      const remarks = rowValues[10];
+      const recurrence = String(rowValues[11] || '').trim();
+
+      if (recurrence && recurrence !== '無' && recurrence !== '不重複' && recurrence !== '') {
+        const nextDueDate = calculateNextDueDate(dueDateStr, recurrence);
+        if (nextDueDate) {
+          const newId = 'T' + new Date().getTime().toString().slice(-6);
+          const newPriority = calculatePriority(nextDueDate);
+
+          taskSheet.appendRow([
+            newId,
+            pName,
+            subItem || '一般',
+            taskTitle,
+            category || '通用',
+            newPriority,
+            new Date(),
+            nextDueDate,
+            '未開始',
+            false,
+            remarks || '',
+            recurrence
+          ]);
+          return `✅ 任務已完成！並已自動為您排定下一期【${recurrence}】（${nextDueDate}）！`;
+        }
+      }
     } else {
       taskSheet.getRange(rowIndex, 10).setValue(false);
     }
