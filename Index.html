@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>個人工作儀表板</title>
+  <title>個人視覺化工作儀表板</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
   <style>
@@ -115,7 +115,7 @@
   <!-- Header Banner -->
   <div class="header-bar text-center">
     <div class="container">
-      <h3 class="fw-bold mb-1"><i class="bi bi-grid-1x2-fill me-2"></i>個人的工作儀表板</h3>
+      <h3 class="fw-bold mb-1"><i class="bi bi-grid-1x2-fill me-2"></i>個人視覺化工作儀表板</h3>
       <p class="mb-0 text-white-50 small" id="current-date">載入中...</p>
     </div>
   </div>
@@ -170,27 +170,36 @@
         </div>
       </div>
 
-      <!-- 第二排右：快速新增任務 -->
+      <!-- 第二排右：快速新增任務（支援週期重複） -->
       <div class="col-lg-6">
         <div class="card card-app p-3 bg-white h-100 mb-0">
           <h6 class="fw-bold mb-2 text-dark"><i class="bi bi-plus-circle me-2 text-primary"></i>快速新增任務</h6>
           <form id="addForm">
             <div class="row g-2 mb-2">
-              <div class="col-md-6">
+              <div class="col-md-4">
                 <label class="form-label extra-small fw-bold mb-1" style="font-size: 12px;">專案名稱</label>
                 <select id="projectSelect" class="form-select form-select-sm" onchange="toggleCustomProject(this.value)">
                   <option value="" disabled selected>請選擇專案...</option>
                   <option value="__NEW__">+ 新增自訂專案...</option>
                 </select>
               </div>
-              <div class="col-md-6">
-                <label class="form-label extra-small fw-bold mb-1" style="font-size: 12px;">截止日期 <span class="text-muted fw-normal">（自動判定）</span></label>
+              <div class="col-md-4">
+                <label class="form-label extra-small fw-bold mb-1" style="font-size: 12px;">截止日期</label>
                 <input type="date" id="dueDate" class="form-control form-control-sm">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label extra-small fw-bold mb-1" style="font-size: 12px;">重複週期</label>
+                <select id="recurrenceSelect" class="form-select form-select-sm">
+                  <option value="無" selected>單次 (不重複)</option>
+                  <option value="每週">🔄 每週 (+7天)</option>
+                  <option value="每月">🔄 每月 (+1月)</option>
+                  <option value="每年">🔄 每年 (+1年)</option>
+                </select>
               </div>
             </div>
 
             <div id="customProjectBox" class="d-none p-2 rounded bg-light border mb-2">
-              <input type="text" id="customProjectName" class="form-control form-control-sm mb-2" placeholder="輸入新專案名稱（例如：和煦之光塔羅）">
+              <input type="text" id="customProjectName" class="form-control form-control-sm mb-2" placeholder="輸入新專案名稱（例如：網站重構專案）">
               <div class="extra-small text-muted mb-1" style="font-size: 11px;">選擇專案代表色：</div>
               <div id="colorPickerGroup">
                 <span class="color-swatch active" style="background: #0d6efd;" data-color="#0d6efd" onclick="selectColor(this)"></span>
@@ -481,6 +490,13 @@
       const checkIcon = isCompletedList
         ? `<i class="bi bi-check-circle-fill btn-uncheck-task me-3" title="點擊還原為未完成" onclick="changeStatus(${t.rowIndex}, '進行中')"></i>`
         : `<i class="bi bi-circle btn-check-task me-3" title="點擊標記為已完成" onclick="changeStatus(${t.rowIndex}, '已完成')"></i>`;
+      
+      const pColor = (t.projectColor && t.projectColor.startsWith('#')) ? t.projectColor : '#0d6efd';
+      
+      // 週期重複標籤
+      const repeatBadge = (t.recurrence && t.recurrence !== '無' && t.recurrence !== '不重複')
+        ? `<span class="badge bg-info-subtle text-info-emphasis border ms-1" style="font-size: 11px;"><i class="bi bi-arrow-repeat me-1"></i>${t.recurrence}</span>`
+        : '';
 
       return `<div class="p-2 mb-2 rounded-3 bg-light border d-flex justify-content-between align-items-center task-card">
         <div class="d-flex align-items-center">
@@ -489,10 +505,11 @@
             <div class="fw-bold small ${isCompletedList ? 'text-decoration-line-through text-muted' : ''}">
               <span class="badge badge-priority-${t.priority} me-1">[${t.priority}]</span>
               ${t.title}
+              ${repeatBadge}
             </div>
             <div class="text-muted extra-small mt-1" style="font-size: 11px;">
               ${dueBadge}
-              <span class="badge" style="background-color: ${t.projectColor}; color: white;">${t.project}</span>
+              <span class="badge rounded-pill" style="background-color: ${pColor}; color: white;">${t.project}</span>
             </div>
           </div>
         </div>
@@ -524,7 +541,8 @@
         projectName: pName,
         projectColor: (sel.value === '__NEW__') ? selectedProjectColor : '',
         taskContent: document.getElementById('taskContent').value.trim(),
-        dueDate: document.getElementById('dueDate').value
+        dueDate: document.getElementById('dueDate').value,
+        recurrence: document.getElementById('recurrenceSelect').value
       };
 
       if (!form.projectName || !form.taskContent) {
