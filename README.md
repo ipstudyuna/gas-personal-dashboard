@@ -18,7 +18,7 @@
 
 ## 🚀 3 分鐘快速啟用教學（給使用者）
 
-1. **建立試算表副本**：點擊 [👉 取得試算表範本（一鍵複製）](https://docs.google.com/spreadsheets/d/您的試算表ID/copy)
+1. **建立試算表副本**：點擊 [👉 取得試算表範本（一鍵複製）](https://docs.google.com/spreadsheets/d/1NE927knXdJSZ6Q2-SRjgDXvVxDcRP2C4NmhKjaQhsHU/copy)
 2. **初始化分頁與公式**：
    * 等待試算表上方工具列出現 **`📱 工作儀表板 App`** 選單。
    * 點選 **`🚀 1-Click 一鍵最佳化分頁與公式`** 並完成 Google 帳號安全性授權。
