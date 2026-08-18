@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>個人視覺化工作儀表板</title>
+  <title>個人化視覺工作儀表板</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
   <style>
@@ -22,7 +22,7 @@
     .btn-check-task:hover { color: #198754; }
     .btn-uncheck-task { cursor: pointer; color: #198754; transition: color 0.2s; font-size: 1.25rem; }
     .btn-uncheck-task:hover { color: #dc3545; }
-   
+    
     .status-pill {
       border-radius: 20px;
       font-size: 12px;
@@ -115,7 +115,7 @@
   <!-- Header Banner -->
   <div class="header-bar text-center">
     <div class="container">
-      <h3 class="fw-bold mb-1"><i class="bi bi-grid-1x2-fill me-2"></i>個人視覺化工作儀表板</h3>
+      <h3 class="fw-bold mb-1"><i class="bi bi-grid-1x2-fill me-2"></i>個人化視覺工作儀表板</h3>
       <p class="mb-0 text-white-50 small" id="current-date">載入中...</p>
     </div>
   </div>
@@ -226,28 +226,33 @@
       </div>
     </div>
 
-    <!-- 3. 下方區塊：頁籤式工作區 -->
+    <!-- 3. 下方區塊：5 頁籤工作區 (方案 C) -->
     <div class="card card-app bg-white p-3">
       <div class="d-flex flex-wrap justify-content-between align-items-center border-bottom pb-2 mb-3 gap-2">
         <ul class="nav nav-tabs nav-tabs-custom border-bottom-0" id="taskTab" role="tablist">
           <li class="nav-item" role="presentation">
             <button class="nav-link active" id="today-tab" data-bs-toggle="tab" data-bs-target="#tab-today" type="button" role="tab">
-              <i class="bi bi-check2-circle me-1 text-primary"></i>今日待辦事項 <span class="badge bg-primary tab-badge" id="badge-today">0</span>
+              <i class="bi bi-check2-circle me-1 text-primary"></i>今日待辦 <span class="badge bg-primary tab-badge" id="badge-today">0</span>
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="overdue-tab" data-bs-toggle="tab" data-bs-target="#tab-overdue" type="button" role="tab">
+              <i class="bi bi-exclamation-triangle-fill me-1 text-danger"></i>⚠️ 逾期任務 <span class="badge bg-danger tab-badge" id="badge-overdue">0</span>
             </button>
           </li>
           <li class="nav-item" role="presentation">
             <button class="nav-link" id="cal-tab" data-bs-toggle="tab" data-bs-target="#tab-cal" type="button" role="tab">
-              <i class="bi bi-calendar3 me-1 text-warning"></i>今日日曆排程 <span class="badge bg-secondary tab-badge" id="badge-cal">0</span>
+              <i class="bi bi-calendar3 me-1 text-warning"></i>今日排程 <span class="badge bg-secondary tab-badge" id="badge-cal">0</span>
             </button>
           </li>
           <li class="nav-item" role="presentation">
             <button class="nav-link" id="upcoming-tab" data-bs-toggle="tab" data-bs-target="#tab-upcoming" type="button" role="tab">
-              <i class="bi bi-list-task me-1 text-info"></i>未來待辦事項清單 <span class="badge bg-secondary tab-badge" id="badge-upcoming">0</span>
+              <i class="bi bi-list-task me-1 text-info"></i>未來待辦 <span class="badge bg-secondary tab-badge" id="badge-upcoming">0</span>
             </button>
           </li>
           <li class="nav-item" role="presentation">
             <button class="nav-link" id="completed-tab" data-bs-toggle="tab" data-bs-target="#tab-completed" type="button" role="tab">
-              <i class="bi bi-check-all me-1 text-success"></i>已完成任務清單 <span class="badge bg-success tab-badge" id="badge-completed">0</span>
+              <i class="bi bi-check-all me-1 text-success"></i>已完成 <span class="badge bg-success tab-badge" id="badge-completed">0</span>
             </button>
           </li>
         </ul>
@@ -257,17 +262,31 @@
 
       <!-- 頁籤內容區域 -->
       <div class="tab-content" id="taskTabContent">
-        <!-- 頁籤 1: 今日待辦事項 -->
+        <!-- 頁籤 1: 今日待辦 -->
         <div class="tab-pane fade show active" id="tab-today" role="tabpanel">
           <div id="today-task-list" class="task-scroll-container">載入中...</div>
         </div>
 
-        <!-- 頁籤 2: 今日日曆排程 -->
+        <!-- 頁籤 2: ⚠️ 逾期任務（附專案篩選下拉選單） -->
+        <div class="tab-pane fade" id="tab-overdue" role="tabpanel">
+          <div class="d-flex justify-content-between align-items-center mb-3 px-1">
+            <span class="text-danger small fw-bold"><i class="bi bi-clock-history me-1"></i>已逾期任務（依截止日期由舊至新排序）</span>
+            <div class="d-flex align-items-center">
+              <label class="me-2 small fw-bold text-secondary text-nowrap"><i class="bi bi-funnel me-1"></i>專案篩選：</label>
+              <select id="overdueProjectFilter" class="form-select form-select-sm" style="width: auto; min-width: 160px;" onchange="filterOverdueTasks()">
+                <option value="ALL">全部專案 (全部顯示)</option>
+              </select>
+            </div>
+          </div>
+          <div id="overdue-task-list" class="task-scroll-container">載入中...</div>
+        </div>
+
+        <!-- 頁籤 3: 今日排程 -->
         <div class="tab-pane fade" id="tab-cal" role="tabpanel">
           <div id="calendar-list" class="task-scroll-container">載入中...</div>
         </div>
 
-        <!-- 頁籤 3: 未來待辦事項清單（附專案篩選下拉選單） -->
+        <!-- 頁籤 4: 未來待辦（附專案篩選下拉選單） -->
         <div class="tab-pane fade" id="tab-upcoming" role="tabpanel">
           <div class="d-flex justify-content-between align-items-center mb-3 px-1">
             <span class="text-muted small"><i class="bi bi-sort-down me-1"></i>依截止日期由近至遠排序</span>
@@ -281,7 +300,7 @@
           <div id="upcoming-task-list" class="task-scroll-container">載入中...</div>
         </div>
 
-        <!-- 頁籤 4: 已完成任務清單 -->
+        <!-- 頁籤 5: 已完成 -->
         <div class="tab-pane fade" id="tab-completed" role="tabpanel">
           <div id="completed-task-list" class="task-scroll-container">載入中...</div>
         </div>
@@ -353,6 +372,7 @@
 
       // 頁籤徽章數量更新
       document.getElementById('badge-today').innerText = (data.todayTasks || []).length;
+      document.getElementById('badge-overdue').innerText = (data.overdueTasks || []).length;
       document.getElementById('badge-cal').innerText = (data.calEvents || []).length;
       document.getElementById('badge-upcoming').innerText = (data.upcomingTasks || []).length;
       document.getElementById('badge-completed').innerText = (data.completedTasks || []).length;
@@ -369,16 +389,27 @@
       optHtml += '<option value="__NEW__" ' + (curVal === '__NEW__' ? 'selected' : '') + '>+ 新增自訂專案...</option>';
       sel.innerHTML = optHtml;
 
-      // 未來待辦專案篩選下拉選單更新
+      // 專案篩選下拉選單更新 (逾期任務 & 未來待辦)
       const filterSel = document.getElementById('upcomingProjectFilter');
-      const currentFilterVal = filterSel.value || 'ALL';
+      const currentFilterVal = filterSel ? (filterSel.value || 'ALL') : 'ALL';
+      const overdueFilterSel = document.getElementById('overdueProjectFilter');
+      const currentOverdueFilterVal = overdueFilterSel ? (overdueFilterSel.value || 'ALL') : 'ALL';
+
       let filterOptHtml = '<option value="ALL">全部專案 (全部顯示)</option>';
       if (data.existingProjects && data.existingProjects.length > 0) {
         data.existingProjects.forEach(p => {
           filterOptHtml += `<option value="${p.name}" ${currentFilterVal === p.name ? 'selected' : ''}>${p.name}</option>`;
         });
       }
-      filterSel.innerHTML = filterOptHtml;
+      if (filterSel) filterSel.innerHTML = filterOptHtml;
+
+      let overdueFilterOptHtml = '<option value="ALL">全部專案 (全部顯示)</option>';
+      if (data.existingProjects && data.existingProjects.length > 0) {
+        data.existingProjects.forEach(p => {
+          overdueFilterOptHtml += `<option value="${p.name}" ${currentOverdueFilterVal === p.name ? 'selected' : ''}>${p.name}</option>`;
+        });
+      }
+      if (overdueFilterSel) overdueFilterSel.innerHTML = overdueFilterOptHtml;
 
       // 1. 渲染今日日曆行程
       const now = new Date();
@@ -418,10 +449,13 @@
       }
       document.getElementById('today-task-list').innerHTML = todayHtml;
 
-      // 3. 渲染未來待辦事項（套用目前選取的篩選）
+      // 3. 渲染 ⚠️ 逾期任務（套用篩選）
+      filterOverdueTasks();
+
+      // 4. 渲染未來待辦事項（套用篩選）
       filterUpcomingTasks();
 
-      // 4. 渲染已完成任務
+      // 5. 渲染已完成任務
       let compHtml = '';
       if (data.completedTasks && data.completedTasks.length > 0) {
         data.completedTasks.forEach(t => { compHtml += buildTaskCardHtml(t, true); });
@@ -430,7 +464,7 @@
       }
       document.getElementById('completed-task-list').innerHTML = compHtml;
 
-      // 5. 渲染各專案進度概況
+      // 6. 渲染各專案進度概況
       let pHtml = '';
       if (data.projects && data.projects.length > 0) {
         data.projects.forEach(p => {
@@ -452,6 +486,62 @@
         pHtml = '<div class="text-muted small p-2">尚無專案資料</div>';
       }
       document.getElementById('project-list').innerHTML = pHtml;
+    }
+
+    // 智能有效日期解析 (支援 YYYY-MM 格式自動推算至該月最後一天)
+    function getEffectiveDueDateStr(dueDateStr) {
+      if (!dueDateStr || typeof dueDateStr !== 'string') return '';
+      const clean = dueDateStr.trim().replace(/\//g, '-').replace(/\./g, '-');
+      if (!clean) return '';
+
+      const parts = clean.split('-').map(p => p.trim()).filter(Boolean);
+      if (parts.length === 1 && /^\d{4}$/.test(parts[0])) {
+        const y = parseInt(parts[0], 10);
+        return `${y}-12-31`;
+      } else if (parts.length === 2 && /^\d{4}$/.test(parts[0]) && /^\d{1,2}$/.test(parts)) {
+        const y = parseInt(parts[0], 10);
+        const m = parseInt(parts, 10);
+        if (m >= 1 && m <= 12) {
+          const lastDay = new Date(y, m, 0).getDate();
+          const mm = String(m).padStart(2, '0');
+          const dd = String(lastDay).padStart(2, '0');
+          return `${y}-${mm}-${dd}`;
+        }
+      } else if (parts.length === 3 && /^\d{4}$/.test(parts[0]) && /^\d{1,2}$/.test(parts) && /^\d{1,2}$/.test(parts[2])) {
+        const y = parseInt(parts[0], 10);
+        const m = parseInt(parts, 10);
+        const d = parseInt(parts[2], 10);
+        const mm = String(m).padStart(2, '0');
+        const dd = String(d).padStart(2, '0');
+        return `${y}-${mm}-${dd}`;
+      }
+
+      const d = new Date(dueDateStr);
+      if (!isNaN(d.getTime())) {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+      }
+      return clean;
+    }
+
+    // ⚠️ 逾期任務篩選函數
+    function filterOverdueTasks() {
+      if (!rawAppData || !rawAppData.overdueTasks) return;
+      const filterSel = document.getElementById('overdueProjectFilter');
+      const selectedProject = filterSel ? filterSel.value : 'ALL';
+      const filtered = (selectedProject === 'ALL')
+        ? rawAppData.overdueTasks
+        : rawAppData.overdueTasks.filter(t => t.project === selectedProject);
+
+      let ovHtml = '';
+      if (filtered.length > 0) {
+        filtered.forEach(t => { ovHtml += buildTaskCardHtml(t, false); });
+      } else {
+        ovHtml = `<div class="text-muted small p-3 text-center bg-light rounded-3">${selectedProject === 'ALL' ? '🎉 太棒了！目前沒有任何逾期任務！' : '該專案目前沒有逾期任務'}</div>`;
+      }
+      document.getElementById('overdue-task-list').innerHTML = ovHtml;
     }
 
     // 未來待辦事項篩選函數
@@ -486,7 +576,23 @@
     }
 
     function buildTaskCardHtml(t, isCompletedList) {
-      const dueBadge = t.dueDate ? `<span class="badge bg-light text-dark border me-1"><i class="bi bi-clock me-1"></i>${t.dueDate}</span>` : '';
+      let dueBadge = '';
+      if (t.dueDate) {
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = String(now.getMonth() + 1).padStart(2, '0');
+        const d = String(now.getDate()).padStart(2, '0');
+        const todayStr = `${y}-${m}-${d}`;
+        
+        const effDateStr = getEffectiveDueDateStr(t.dueDate);
+        const isOverdue = !isCompletedList && effDateStr && (effDateStr < todayStr);
+        if (isOverdue) {
+          dueBadge = `<span class="badge bg-danger text-white me-1"><i class="bi bi-exclamation-triangle-fill me-1"></i>${t.dueDate} 逾期</span>`;
+        } else {
+          dueBadge = `<span class="badge bg-light text-dark border me-1"><i class="bi bi-clock me-1"></i>${t.dueDate}</span>`;
+        }
+      }
+
       const checkIcon = isCompletedList
         ? `<i class="bi bi-check-circle-fill btn-uncheck-task me-3" title="點擊還原為未完成" onclick="changeStatus(${t.rowIndex}, '進行中')"></i>`
         : `<i class="bi bi-circle btn-check-task me-3" title="點擊標記為已完成" onclick="changeStatus(${t.rowIndex}, '已完成')"></i>`;
