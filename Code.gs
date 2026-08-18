@@ -1,5 +1,5 @@
 /**
- * 個人視覺化工作儀表板 Web App (v4.6 - 開源範本版)
+ * 個人視覺化工作儀表板 Web App (v4.7：獨立【⚠️ 逾期任務】頁籤 + 修復週期性任務展延)
  */
 
 const DEFAULT_COLORS = ['#0d6efd', '#198754', '#6f42c1', '#fd7e14', '#0dcaf0', '#d63384'];
@@ -53,7 +53,8 @@ function testExternalCalendarAccess() {
     let urlCount = 0;
 
     icalUrls.forEach(row => {
-      const url = String(row[0] || row || '').trim();
+      const [urlA, urlB] = row.map(val => String(val || "").trim());
+      const url = urlA || urlB || "";
       if (url.startsWith('http')) {
         urlCount++;
         const events = fetchExternalIcsEvents(url, new Date());
@@ -72,12 +73,12 @@ function testExternalCalendarAccess() {
 }
 
 /**
- * 1-Click 一鍵最佳化試算表分頁與公式（支援第 12 欄重複週期）
+ * 1-Click 一鍵最佳化試算表分頁與公式
  */
 function setupDashboardTabs() {
   const ss = getSpreadsheet();
   const tabNames = ['📊 總覽儀表板', '📋 專案檢核表', '⚙️ 系統設定'];
- 
+  
   tabNames.forEach(name => {
     if (!ss.getSheetByName(name)) ss.insertSheet(name);
   });
@@ -113,7 +114,6 @@ function setupDashboardTabs() {
     taskSheet.getRange('F2:F500').setDataValidation(priorityRule);
     taskSheet.getRange('I2:I500').setDataValidation(statusRule);
   } else {
-    // 若已有檢核表，自動補齊 L1 欄位標題
     if (!taskSheet.getRange('L1').getValue()) {
       taskSheet.getRange('L1').setValue('重複週期').setFontWeight('bold').setBackground('#E8F0FE');
     }
@@ -123,7 +123,7 @@ function setupDashboardTabs() {
   const dashSheet = ss.getSheetByName('📊 總覽儀表板');
   dashSheet.clear();
   dashSheet.getRange('A1:D1').setValues([['總專案數', '未完成任務數', '今日待辦數', '整體完成率']]).setFontWeight('bold').setBackground('#FCE8E6');
- 
+  
   dashSheet.getRange('A2').setFormula("=IFERROR(COUNTA(UNIQUE(FILTER('📋 專案檢核表'!B2:B, '📋 專案檢核表'!B2:B<>\"\" ))), 0)");
   dashSheet.getRange('B2').setFormula("=IFERROR(COUNTIFS('📋 專案檢核表'!B2:B, \"<>\"; '📋 專案檢核表'!I2:I, \"<>已完成\"), 0)");
   dashSheet.getRange('C2').setFormula("=IFERROR(COUNTIFS('📋 專案檢核表'!H2:H, TODAY(), '📋 專案檢核表'!I2:I, \"<>已完成\"), 0)");
@@ -146,48 +146,115 @@ function setupDashboardTabs() {
   });
 
   if (SpreadsheetApp.getUi()) {
-    SpreadsheetApp.getUi().alert('🎉 試算表結構與公式已初始化完成（支援重複性任務）！');
+    SpreadsheetApp.getUi().alert('🎉 試算表結構與公式已初始化完成！');
   }
 }
 
+/**
+ * 計算有效截止日期字串 (支援 YYYY-MM 月底判定、YYYY 年底判定、YYYY-MM-DD)
+ */
+function getEffectiveDueDateStr(dueDateStr) {
+  if (!dueDateStr || typeof dueDateStr !== 'string') return '';
+  const clean = dueDateStr.trim().replace(/\//g, '-').replace(/\./g, '-');
+  if (!clean) return '';
+
+  const parts = clean.split('-').map(p => p.trim()).filter(Boolean);
+  if (parts.length === 1) {
+    const [yStr] = parts;
+    if (/^\d{4}$/.test(yStr)) {
+      const y = parseInt(yStr, 10);
+      return `${y}-12-31`;
+    }
+  } else if (parts.length === 2) {
+    const [yStr, mStr] = parts;
+    if (/^\d{4}$/.test(yStr) && /^\d{1,2}$/.test(mStr)) {
+      const y = parseInt(yStr, 10);
+      const m = parseInt(mStr, 10);
+      if (m >= 1 && m <= 12) {
+        const lastDay = new Date(y, m, 0).getDate();
+        const mm = String(m).padStart(2, '0');
+        const dd = String(lastDay).padStart(2, '0');
+        return `${y}-${mm}-${dd}`;
+      }
+    }
+  } else if (parts.length === 3) {
+    const [yStr, mStr, dStr] = parts;
+    if (/^\d{4}$/.test(yStr) && /^\d{1,2}$/.test(mStr) && /^\d{1,2}$/.test(dStr)) {
+      const y = parseInt(yStr, 10);
+      const m = parseInt(mStr, 10);
+      const d = parseInt(dStr, 10);
+      const mm = String(m).padStart(2, '0');
+      const dd = String(d).padStart(2, '0');
+      return `${y}-${mm}-${dd}`;
+    }
+  }
+
+  const d = new Date(dueDateStr);
+  if (!isNaN(d.getTime())) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+  return clean;
+}
+
 function calculatePriority(dueDateStr) {
-  if (!dueDateStr || dueDateStr.trim() === '') return '低';
-  const due = new Date(dueDateStr);
+  const effDateStr = getEffectiveDueDateStr(dueDateStr);
+  if (!effDateStr) return '低';
+  
+  const parts = effDateStr.split('-');
+  if (parts.length !== 3) return '低';
+  
+  const [yStr, mStr, dStr] = parts;
+  const y = parseInt(yStr, 10);
+  const m = parseInt(mStr, 10);
+  const d = parseInt(dStr, 10);
+  
+  const due = new Date(y, m - 1, d);
   if (isNaN(due.getTime())) return '低';
- 
+  
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const diffDays = Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
- 
+  
   if (diffDays <= 7) return '高';
   return '中';
 }
 
+/**
+ * 計算下一期重複任務的截止日 (完整修復：防陣列解析錯誤與年份溢出)
+ */
 function calculateNextDueDate(baseDueDateStr, recurrence) {
   let baseDate = new Date();
   if (baseDueDateStr && baseDueDateStr.trim() !== '') {
-    const parts = baseDueDateStr.split('-');
+    const eff = getEffectiveDueDateStr(baseDueDateStr);
+    const parts = eff.split('-');
     if (parts.length === 3) {
-      baseDate = new Date(parseInt(parts[0], 10), parseInt(parts, 10) - 1, parseInt(parts, 10));
+      const [yStr, mStr, dStr] = parts;
+      const y = parseInt(yStr, 10);
+      const m = parseInt(mStr, 10);
+      const d = parseInt(dStr, 10);
+      baseDate = new Date(y, m - 1, d);
     }
   }
-  
+
   const nextDate = new Date(baseDate.getTime());
-  
+
   if (recurrence === '每週' || recurrence.includes('週')) {
     nextDate.setDate(nextDate.getDate() + 7);
   } else if (recurrence === '每月' || recurrence.includes('月')) {
     const origDay = baseDate.getDate();
     nextDate.setMonth(nextDate.getMonth() + 1);
     if (nextDate.getDate() !== origDay) {
-      nextDate.setDate(0); // 避免月底天數溢位，自動調整為目標月份最後一天
+      nextDate.setDate(0); // 避免 1/31 變 3/3，自動調整為該月最後一天
     }
   } else if (recurrence === '每年' || recurrence.includes('年')) {
     nextDate.setFullYear(nextDate.getFullYear() + 1);
   } else {
     return '';
   }
-  
+
   const tz = Session.getScriptTimeZone() || "Asia/Taipei";
   return Utilities.formatDate(nextDate, tz, "yyyy-MM-dd");
 }
@@ -204,7 +271,6 @@ function parseIcsDateString(dtStr) {
   if (!clean.includes('T')) {
     return { isAllDay: true, date: new Date(y, m, d) };
   }
-
   const h = parseInt(clean.substring(9, 11), 10) || 0;
   const min = parseInt(clean.substring(11, 13), 10) || 0;
   const s = parseInt(clean.substring(13, 15), 10) || 0;
@@ -226,7 +292,7 @@ function isIcsEventOccurring(block, targetDate, tz) {
   const dtstartExec = /DTSTART(?:;[^:]+)?:([0-9TZ]+)/.exec(block);
   if (!dtstartExec) return false;
   const dtstartRaw = dtstartExec.pop();
- 
+  
   const parsedStart = parseIcsDateString(dtstartRaw);
   if (!parsedStart || !parsedStart.date) return false;
 
@@ -305,14 +371,14 @@ function isIcsEventOccurring(block, targetDate, tz) {
 function fetchExternalIcsEvents(icalUrl, targetDate) {
   const events = [];
   if (!icalUrl || !icalUrl.startsWith('http')) return events;
- 
+  
   try {
     const res = UrlFetchApp.fetch(icalUrl, { muteHttpExceptions: true });
     if (res.getResponseCode() === 200) {
       const icsText = res.getContentText();
       const tz = Session.getScriptTimeZone() || 'Asia/Taipei';
       const blocks = icsText.split('BEGIN:VEVENT');
-     
+      
       blocks.slice(1).forEach(block => {
         if (isIcsEventOccurring(block, targetDate, tz)) {
           const summaryExec = /SUMMARY:(.*)/.exec(block);
@@ -325,7 +391,6 @@ function fetchExternalIcsEvents(icalUrl, targetDate) {
 
           const dtstartExec = /DTSTART(?:;[^:]+)?:([0-9TZ]+)/.exec(block);
           const dtstartRaw = dtstartExec ? dtstartExec.pop() : '';
-
           const dtendExec = /DTEND(?:;[^:]+)?:([0-9TZ]+)/.exec(block);
           const dtendRaw = dtendExec ? dtendExec.pop() : '';
 
@@ -340,7 +405,7 @@ function fetchExternalIcsEvents(icalUrl, targetDate) {
               isAllDay = false;
               const sDate = parsedStart.date;
               const startFormatted = Utilities.formatDate(sDate, tz, 'HH:mm');
-             
+              
               const startH = parseInt(Utilities.formatDate(sDate, tz, 'HH'), 10);
               const startM = parseInt(Utilities.formatDate(sDate, tz, 'mm'), 10);
               startMin = startH * 60 + startM;
@@ -383,6 +448,7 @@ function getWebAppDataJson() {
     summary: { totalProjects: 0, pendingTasks: 0, calCount: 0, overallRate: 0 },
     calEvents: [],
     todayTasks: [],
+    overdueTasks: [],
     upcomingTasks: [],
     completedTasks: [],
     projects: [],
@@ -435,7 +501,8 @@ function getWebAppDataJson() {
     if (setSheet && setSheet.getLastRow() >= 2) {
       const icalUrls = setSheet.getRange(2, 4, setSheet.getLastRow() - 1, 2).getDisplayValues();
       icalUrls.forEach(urlRow => {
-        const url = String(urlRow[0] || urlRow || "").trim();
+        const [urlA, urlB] = urlRow.map(val => String(val || "").trim());
+        const url = urlA || urlB || "";
         if (url && url.startsWith("http")) {
           const extEvents = fetchExternalIcsEvents(url, now);
           result.calEvents = result.calEvents.concat(extEvents);
@@ -449,7 +516,7 @@ function getWebAppDataJson() {
   result.calEvents.sort((a, b) => a.startMin - b.startMin);
   result.summary.calCount = result.calEvents.length;
 
-  // 3. 專案代表色
+  // 3. 專案代表色 (使用解構賦值安全讀取)
   const colorMap = {};
   try {
     const ss = getSpreadsheet();
@@ -457,22 +524,21 @@ function getWebAppDataJson() {
     if (setSheet && setSheet.getLastRow() >= 2) {
       const colorRows = setSheet.getRange(2, 5, setSheet.getLastRow() - 1, 2).getDisplayValues();
       colorRows.forEach(cr => {
-        const pName = String(cr[0] || "").trim();
-        const pColor = String(cr || "").trim();
+        const [pName, pColor] = cr.map(val => String(val || "").trim());
         if (pName && pColor) colorMap[pName] = pColor;
       });
     }
   } catch (err) {}
 
-  // 4. 讀取專案檢核表（支援第 12 欄重複週期）
+  // 4. 讀取專案檢核表
   try {
     const ss = getSpreadsheet();
     const taskSheet = ss.getSheetByName("📋 專案檢核表");
-   
+    
     if (taskSheet && taskSheet.getLastRow() > 1) {
       const maxCols = Math.max(12, taskSheet.getLastColumn());
       const displayData = taskSheet.getRange(2, 1, taskSheet.getLastRow() - 1, maxCols).getDisplayValues();
-     
+      
       let allTasks = [];
       const projectMap = {};
       let autoColorIndex = 0;
@@ -490,6 +556,7 @@ function getWebAppDataJson() {
             autoColorIndex++;
           }
 
+          const effDueDate = getEffectiveDueDateStr(cDueDate);
           const taskObj = {
             rowIndex: i + 2,
             id: cTaskId || ('T' + (i + 1)),
@@ -500,6 +567,7 @@ function getWebAppDataJson() {
             category: cCategory || "通用",
             priority: autoPriority,
             dueDate: cDueDate || "",
+            effectiveDueDate: effDueDate,
             status: cStatus || "未開始",
             isDone: isCompleted,
             recurrence: cRecurrence || "無",
@@ -533,7 +601,7 @@ function getWebAppDataJson() {
       const totalTaskCount = allTasks.length;
       const completedTaskCount = allTasks.filter(t => t.isDone).length;
       const pendingTaskCount = allTasks.filter(t => !t.isDone).length;
-     
+      
       result.summary.totalProjects = result.existingProjects.length;
       result.summary.pendingTasks = pendingTaskCount;
       result.summary.overallRate = totalTaskCount > 0 ? Math.round((completedTaskCount / totalTaskCount) * 100) : 0;
@@ -551,11 +619,15 @@ function getWebAppDataJson() {
         };
       });
 
-      result.todayTasks = allTasks.filter(t => !t.isDone && t.dueDate === todayStr);
-      result.upcomingTasks = allTasks.filter(t => !t.isDone && t.dueDate !== todayStr).sort((a, b) => {
-        if (!a.dueDate) return 1;
-        if (!b.dueDate) return -1;
-        return new Date(a.dueDate) - new Date(b.dueDate);
+      // 方案 C：分流為 今日待辦 / ⚠️ 逾期任務 / 未來待辦 / 已完成 (含 YYYY-MM 月底防逾期判定)
+      result.todayTasks = allTasks.filter(t => !t.isDone && (t.dueDate === todayStr || t.effectiveDueDate === todayStr));
+      result.overdueTasks = allTasks.filter(t => !t.isDone && t.effectiveDueDate && t.effectiveDueDate < todayStr).sort((a, b) => {
+        return new Date(a.effectiveDueDate) - new Date(b.effectiveDueDate);
+      });
+      result.upcomingTasks = allTasks.filter(t => !t.isDone && (!t.effectiveDueDate || t.effectiveDueDate > todayStr)).sort((a, b) => {
+        if (!a.effectiveDueDate) return 1;
+        if (!b.effectiveDueDate) return -1;
+        return new Date(a.effectiveDueDate) - new Date(b.effectiveDueDate);
       });
       result.completedTasks = allTasks.filter(t => t.isDone);
     }
@@ -607,6 +679,9 @@ function addNewTaskFromWeb(form) {
   }
 }
 
+/**
+ * 更新任務狀態並自動展延下一期重複性任務 (使用解構賦值，徹底解決亂碼與年份溢出)
+ */
 function toggleTaskStatus(rowIndex, newStatus) {
   try {
     const ss = getSpreadsheet();
@@ -617,15 +692,24 @@ function toggleTaskStatus(rowIndex, newStatus) {
     if (newStatus === '已完成') {
       taskSheet.getRange(rowIndex, 10).setValue(true);
 
-      // 檢查是否為重複性任務
-      const rowValues = taskSheet.getRange(rowIndex, 1, 1, 12).getDisplayValues()[0];
-      const pName = rowValues;
-      const subItem = rowValues;
-      const taskTitle = rowValues;
-      const category = rowValues;
-      const dueDateStr = rowValues[7];
-      const remarks = rowValues[10];
-      const recurrence = String(rowValues[11] || '').trim();
+      // 檢查是否為重複性任務 (使用陣列解構精確對應欄位)
+      const rawRowValues = taskSheet.getRange(rowIndex, 1, 1, 12).getDisplayValues()[0];
+      const [
+        cTaskId,
+        pName,
+        subItem,
+        taskTitle,
+        category,
+        cPriority,
+        cStart,
+        dueDateStr,
+        cStatus,
+        cCheck,
+        remarks,
+        rawRecurrence
+      ] = rawRowValues.map(val => String(val || "").trim());
+
+      const recurrence = rawRecurrence || '';
 
       if (recurrence && recurrence !== '無' && recurrence !== '不重複' && recurrence !== '') {
         const nextDueDate = calculateNextDueDate(dueDateStr, recurrence);
