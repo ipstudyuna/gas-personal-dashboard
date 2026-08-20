@@ -191,8 +191,10 @@
                 <label class="form-label extra-small fw-bold mb-1" style="font-size: 12px;">重複週期</label>
                 <select id="recurrenceSelect" class="form-select form-select-sm">
                   <option value="無" selected>單次 (不重複)</option>
+                  <option value="每日">🔄 每日 (+1天)</option>
                   <option value="每週">🔄 每週 (+7天)</option>
                   <option value="每月">🔄 每月 (+1月)</option>
+                  <option value="每季">🔄 每季 (+3月)</option>
                   <option value="每年">🔄 每年 (+1年)</option>
                 </select>
               </div>
@@ -257,7 +259,13 @@
           </li>
         </ul>
 
-        <button class="btn btn-sm btn-outline-secondary rounded-pill" onclick="loadData()"><i class="bi bi-arrow-clockwise me-1"></i>重新整理</button>
+        <div class="d-flex align-items-center gap-2">
+          <!-- 一鍵產出週報按鈕 -->
+          <button class="btn btn-sm btn-success rounded-pill px-3 fw-bold shadow-sm" data-bs-toggle="modal" data-bs-target="#weeklyReportModal" onclick="openWeeklyReportModal()">
+            <i class="bi bi-file-earmark-text me-1"></i>一鍵產出週報
+          </button>
+          <button class="btn btn-sm btn-outline-secondary rounded-pill" onclick="loadData()"><i class="bi bi-arrow-clockwise me-1"></i>重新整理</button>
+        </div>
       </div>
 
       <!-- 頁籤內容區域 -->
@@ -307,6 +315,118 @@
       </div>
     </div>
 
+  </div>
+
+  <!-- 一鍵產出週報彈窗 (Modal) -->
+  <div class="modal fade" id="weeklyReportModal" tabindex="-1" aria-labelledby="weeklyReportModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+      <div class="modal-content border-0 shadow">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title fw-bold" id="weeklyReportModalLabel"><i class="bi bi-journal-check me-2"></i>工作週報一鍵產出工具</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body p-4">
+
+          <!-- 1. 基本設定區 -->
+          <div class="p-3 bg-light rounded-3 border mb-3">
+            <div class="row g-3">
+              <div class="col-md-4">
+                <label class="form-label extra-small fw-bold text-dark mb-1"><i class="bi bi-people-fill me-1 text-primary"></i>所屬組別 / 角色</label>
+                <select id="reportGroupSelect" class="form-select form-select-sm" onchange="handleGroupChange()">
+                  <option value="專案經理">專案經理 (PM)</option>
+                  <option value="剪輯組">剪輯組</option>
+                  <option value="維運組">維運組</option>
+                  <option value="課務組">課務組</option>
+                  <option value="__CUSTOM__">➕ 自訂組別與職稱...</option>
+                </select>
+              </div>
+
+              <div class="col-md-4">
+                <label class="form-label extra-small fw-bold text-dark mb-1"><i class="bi bi-person-badge me-1 text-primary"></i>填表人姓名</label>
+                <input type="text" id="reportUserName" class="form-control form-control-sm" placeholder="請輸入姓名" oninput="saveReportProfile(); updateReportPreview();">
+              </div>
+
+              <div class="col-md-4">
+                <label class="form-label extra-small fw-bold text-dark mb-1" id="labelReportRole"><i class="bi bi-tag-fill me-1 text-primary"></i>主責專案／業務</label>
+                <input type="text" id="reportUserRole" class="form-control form-control-sm" placeholder="輸入職稱或負責項目" oninput="saveReportProfile(); updateReportPreview();">
+              </div>
+            </div>
+
+            <!-- 自訂組別展開區 -->
+            <div id="customGroupInputBox" class="row g-2 mt-2 pt-2 border-top d-none">
+              <div class="col-md-6">
+                <input type="text" id="customGroupName" class="form-control form-control-sm" placeholder="輸入自訂組別名稱 (例：研發組、企劃組)" oninput="saveReportProfile(); updateReportPreview();">
+              </div>
+              <div class="col-md-6">
+                <input type="text" id="customRoleLabel" class="form-control form-control-sm" placeholder="輸入職稱標題 (例：主責業務、負責階段)" oninput="saveReportProfile(); updateReportPreview();">
+              </div>
+            </div>
+          </div>
+
+          <!-- 2. 雙週會議與行事曆勾選區 -->
+          <div class="p-3 bg-light rounded-3 border mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <span class="fw-bold small text-dark"><i class="bi bi-calendar-event me-1 text-warning"></i>行事曆會議勾選（自動過濾私事，勾選項目將自動寫入週報）</span>
+              <div>
+                <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none me-2" onclick="toggleAllMeetings(true)">全選會議</button>
+                <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-secondary" onclick="toggleAllMeetings(false)">清空勾選</button>
+              </div>
+            </div>
+            <div id="calendar-meeting-checklist" class="p-2 bg-white rounded border" style="max-height: 150px; overflow-y: auto; font-size: 12px;">
+              載入行事曆中...
+            </div>
+          </div>
+
+          <!-- 3. 遭遇困難與處理方式（可新增多筆） -->
+          <div class="p-3 bg-light rounded-3 border mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+              <span class="fw-bold small text-dark"><i class="bi bi-exclamation-octagon me-1 text-danger"></i>03 遇到的困難及預計處理方式（可新增多筆，無則保持空白）</span>
+              <div class="d-flex align-items-center gap-2">
+                <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill px-2" onclick="copyTroubleAiPrompt()">
+                  <i class="bi bi-robot me-1"></i>複製 AI 潤飾 Prompt
+                </button>
+                <button type="button" class="btn btn-outline-danger btn-sm rounded-pill px-2" onclick="addTroubleEntry()">
+                  <i class="bi bi-plus-lg me-1"></i>新增困難項目
+                </button>
+              </div>
+            </div>
+
+            <div id="troubleHeaderRow" class="row g-2 d-none px-1 mb-1">
+              <div class="col-md-4"><label class="form-label extra-small fw-bold mb-0">困難／問題說明</label></div>
+              <div class="col-md-3 trouble-target-col"><label class="form-label extra-small fw-bold mb-0 trouble-target-label">關聯項目／對象</label></div>
+              <div class="col-md-3"><label class="form-label extra-small fw-bold mb-0">預計處理方式</label></div>
+              <div class="col-md-1"><label class="form-label extra-small fw-bold mb-0">完成日</label></div>
+              <div class="col-md-1"></div>
+            </div>
+            <div id="troubleEntriesList"></div>
+            <div id="troubleEmptyHint" class="text-muted small text-center py-2">本週無特殊困難（如有需要，可點右上「新增困難項目」記錄）</div>
+          </div>
+
+          <!-- 4. 即時週報排版預覽區（Word 樣式，非 Markdown 原始碼） -->
+          <div>
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <label class="form-label extra-small fw-bold text-secondary mb-0"><i class="bi bi-file-earmark-richtext me-1"></i>即時週報排版預覽（跟下載的 Word 檔一致）：</label>
+              <span class="extra-small text-muted" style="font-size: 11px;">可直接修改上方選項，內容將即時更新</span>
+            </div>
+            <div id="reportHtmlPreview" class="p-3 bg-white rounded border shadow-sm" style="max-height: 400px; overflow-y: auto;"></div>
+            <!-- 內部原始資料（Markdown 純文字），供複製/下載功能使用，不顯示給使用者 -->
+            <textarea id="reportPreviewArea" class="d-none" readonly></textarea>
+          </div>
+
+        </div>
+        <div class="modal-footer bg-light d-flex justify-content-between flex-wrap gap-2">
+          <div id="copyNoticeArea" class="small fw-bold"></div>
+          <div class="d-flex flex-wrap gap-2">
+            <button type="button" class="btn btn-outline-primary btn-sm rounded-pill px-3" onclick="copyWeeklyReportRichText()">
+              <i class="bi bi-clipboard-check me-1"></i>一鍵複製 Word 格式
+            </button>
+            <button type="button" class="btn btn-success btn-sm rounded-pill px-4 shadow-sm" onclick="downloadWeeklyReportDocx()">
+              <i class="bi bi-file-earmark-word me-1"></i>下載 Word 週報
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -668,6 +788,575 @@
           document.getElementById('formMsg').innerHTML = `<span class="text-danger">失敗：${err.toString()}</span>`;
         })
         .addNewTaskFromWeb(form);
+    }
+
+    // ==========================================
+    // 工作週報一鍵產出工具
+    // ==========================================
+
+    function openWeeklyReportModal() {
+      loadReportProfile();
+      renderMeetingChecklist();
+      updateReportPreview();
+    }
+
+    function handleGroupChange() {
+      const g = document.getElementById('reportGroupSelect').value;
+      const roleLabel = document.getElementById('labelReportRole');
+      const roleInput = document.getElementById('reportUserRole');
+      const customBox = document.getElementById('customGroupInputBox');
+      let troubleTargetText = '關聯項目／對象';
+
+      if (g === '專案經理') {
+        customBox.classList.add('d-none');
+        roleLabel.innerHTML = '<i class="bi bi-tag-fill me-1 text-primary"></i>主責專案／業務';
+        roleInput.placeholder = '例：營運規劃與跨組協調';
+        troubleTargetText = '關聯專案／對象';
+      } else if (g === '剪輯組') {
+        customBox.classList.add('d-none');
+        roleLabel.innerHTML = '<i class="bi bi-tag-fill me-1 text-primary"></i>負責剪輯類型';
+        roleInput.placeholder = '例：預錄、補課、活動';
+        troubleTargetText = '影片／場次';
+      } else if (g === '維運組') {
+        customBox.classList.add('d-none');
+        roleLabel.innerHTML = '<i class="bi bi-tag-fill me-1 text-primary"></i>職務';
+        roleInput.placeholder = '例：客服與系統技術維運';
+        troubleTargetText = '關聯專案／對象';
+      } else if (g === '課務組') {
+        customBox.classList.add('d-none');
+        roleLabel.innerHTML = '<i class="bi bi-tag-fill me-1 text-primary"></i>負責階段';
+        roleInput.placeholder = '例：國小組、國高中組';
+        troubleTargetText = '課程／學校';
+      } else if (g === '__CUSTOM__') {
+        customBox.classList.remove('d-none');
+        roleLabel.innerHTML = '<i class="bi bi-tag-fill me-1 text-primary"></i>負責職務／業務';
+        roleInput.placeholder = '輸入具體負責內容';
+        troubleTargetText = '關聯項目／對象';
+      }
+
+      document.querySelectorAll('.trouble-target-label').forEach(el => { el.innerText = troubleTargetText; });
+      // 維運組依範本格式沒有「關聯項目／對象」欄，隱藏該欄位（不影響已輸入的值，只是不會出現在週報裡）
+      document.querySelectorAll('.trouble-target-col').forEach(el => { el.classList.toggle('d-none', g === '維運組'); });
+
+      saveReportProfile();
+      updateReportPreview();
+    }
+
+    // ---- 困難項目（可新增多筆） ----
+    let troubleEntrySeq = 0;
+
+    function addTroubleEntry() {
+      troubleEntrySeq++;
+      const id = 'trouble_' + troubleEntrySeq;
+      const list = document.getElementById('troubleEntriesList');
+      const row = document.createElement('div');
+      row.className = 'p-2 bg-white rounded border mb-2 trouble-entry-row';
+      row.setAttribute('data-trouble-id', id);
+      row.innerHTML = `
+        <div class="row g-2 align-items-center">
+          <div class="col-md-4">
+            <input type="text" class="form-control form-control-sm trouble-desc" placeholder="例：素材音訊雜音嚴重 / 偏遠學校頻寬不足" oninput="updateReportPreview()">
+          </div>
+          <div class="col-md-3 trouble-target-col">
+            <input type="text" class="form-control form-control-sm trouble-target" placeholder="例：排灣語第5課 / 屏東某國小" oninput="updateReportPreview()">
+          </div>
+          <div class="col-md-3">
+            <input type="text" class="form-control form-control-sm trouble-plan" placeholder="例：聯繫教師重錄 / 請維運線上設定" oninput="updateReportPreview()">
+          </div>
+          <div class="col-md-1">
+            <input type="date" class="form-control form-control-sm trouble-date" oninput="updateReportPreview()">
+          </div>
+          <div class="col-md-1 text-end">
+            <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeTroubleEntry('${id}')" title="刪除此項"><i class="bi bi-trash"></i></button>
+          </div>
+        </div>`;
+      list.appendChild(row);
+      handleGroupChange(); // 套用目前組別對應的關聯欄位顯示/隱藏與標籤文字
+      updateTroubleEmptyHint();
+      updateReportPreview();
+      return row;
+    }
+
+    function removeTroubleEntry(id) {
+      const row = document.querySelector('.trouble-entry-row[data-trouble-id="' + id + '"]');
+      if (row) row.remove();
+      updateTroubleEmptyHint();
+      updateReportPreview();
+    }
+
+    function updateTroubleEmptyHint() {
+      const list = document.getElementById('troubleEntriesList');
+      const hint = document.getElementById('troubleEmptyHint');
+      const header = document.getElementById('troubleHeaderRow');
+      if (!list || !hint) return;
+      const hasEntries = list.children.length > 0;
+      hint.classList.toggle('d-none', hasEntries);
+      if (header) header.classList.toggle('d-none', !hasEntries);
+    }
+
+    function collectTroubleEntries() {
+      const rows = document.querySelectorAll('#troubleEntriesList .trouble-entry-row');
+      const entries = [];
+      rows.forEach(row => {
+        const desc = row.querySelector('.trouble-desc').value.trim();
+        const target = row.querySelector('.trouble-target').value.trim();
+        const plan = row.querySelector('.trouble-plan').value.trim();
+        const date = row.querySelector('.trouble-date').value;
+        if (desc || target || plan || date) {
+          entries.push({
+            desc: desc || '（請描述問題）',
+            target: target || '-',
+            plan: plan || '持續協調推進',
+            date: date || '下週'
+          });
+        }
+      });
+      return entries;
+    }
+
+    function copyTroubleAiPrompt() {
+      const entries = collectTroubleEntries();
+      const tableHeader = '| 困難／問題 | 關聯項目／對象 | 預計處理方式 |\n| :--- | :--- | :--- |\n';
+      let draftTable = tableHeader;
+      if (entries.length === 0) {
+        draftTable += '| （本週無特殊困難） | - | - |\n';
+      } else {
+        entries.forEach(e => {
+          draftTable += `| ${e.desc} | ${e.target} | ${e.plan} |\n`;
+        });
+      }
+
+      const prompt = `你是一位專業的行政主管與專案管理秘書。請將以下這份「本週遇到的困難及預計處理方式」草稿表格，逐格潤飾成語意流暢、用詞得體的正式行政語句。
+
+【非常重要，請務必嚴格遵守以下回覆格式，這是用來直接複製回填表單的固定格式，不可違反】
+1. 只能輸出一個 Markdown 表格，禁止輸出任何其他文字、說明、標題、條列符號（如 - 或 •）或粗體字。
+2. 表格欄位數與列數必須與原始草稿完全一致，不可增加、刪除或合併欄位／列。
+3. 表格格式必須完全依照下方範例（含標題列與分隔線），例如：
+| 困難／問題 | 關聯項目／對象 | 預計處理方式 |
+| :--- | :--- | :--- |
+| （此格填入潤飾後的困難描述） | （此格填入潤飾後的關聯項目／對象） | （此格填入潤飾後的處理方式） |
+
+【原始草稿】
+${draftTable}`;
+
+      navigator.clipboard.writeText(prompt).then(() => {
+        const area = document.getElementById('copyNoticeArea');
+        area.innerHTML = '<span class="text-primary"><i class="bi bi-robot me-1"></i>困難事項 AI 潤飾 Prompt 已複製！請貼到 Gemini / ChatGPT，取得潤飾後的表格，再依欄位順序貼回上方對應輸入框。</span>';
+        setTimeout(() => { area.innerHTML = ''; }, 5000);
+      });
+    }
+
+    // 讀取 localStorage 個人週報偏好
+    function loadReportProfile() {
+      const savedGroup = localStorage.getItem('gas_report_group') || '專案經理';
+      const savedName = localStorage.getItem('gas_report_name') || '';
+      const savedRole = localStorage.getItem('gas_report_role') || '';
+      const customG = localStorage.getItem('gas_report_custom_g') || '';
+      const customR = localStorage.getItem('gas_report_custom_r') || '';
+
+      const sel = document.getElementById('reportGroupSelect');
+      sel.value = savedGroup;
+      document.getElementById('reportUserName').value = savedName;
+      document.getElementById('reportUserRole').value = savedRole;
+      document.getElementById('customGroupName').value = customG;
+      document.getElementById('customRoleLabel').value = customR;
+
+      handleGroupChange();
+    }
+
+    function saveReportProfile() {
+      localStorage.setItem('gas_report_group', document.getElementById('reportGroupSelect').value);
+      localStorage.setItem('gas_report_name', document.getElementById('reportUserName').value);
+      localStorage.setItem('gas_report_role', document.getElementById('reportUserRole').value);
+      localStorage.setItem('gas_report_custom_g', document.getElementById('customGroupName').value);
+      localStorage.setItem('gas_report_custom_r', document.getElementById('customRoleLabel').value);
+    }
+
+    function renderMeetingChecklist() {
+      const box = document.getElementById('calendar-meeting-checklist');
+      if (!rawAppData || !rawAppData.biWeeklyCalEvents || rawAppData.biWeeklyCalEvents.length === 0) {
+        box.innerHTML = '<div class="text-muted text-center py-2">近期無日曆行程</div>';
+        return;
+      }
+
+      let html = '';
+      rawAppData.biWeeklyCalEvents.forEach((ev, idx) => {
+        const weekTag = ev.isThisWeek ? '<span class="badge bg-primary me-1">本週</span>' : '<span class="badge bg-info text-dark me-1">下週</span>';
+        const checkedAttr = ev.isWork ? 'checked' : '';
+        html += `<div class="form-check cal-item-check p-1 px-2 rounded mb-1 d-flex align-items-center">
+          <input class="form-check-input me-2" type="checkbox" id="calCheck_${idx}" data-idx="${idx}" ${checkedAttr} onchange="updateReportPreview()">
+          <label class="form-check-label w-100 cursor-pointer text-truncate" for="calCheck_${idx}">
+            ${weekTag} <strong>${ev.dateStr}</strong> ${ev.time} <strong>${ev.title}</strong>
+            ${ev.location ? `<span class="text-muted ms-1">(${ev.location})</span>` : ''}
+          </label>
+        </div>`;
+      });
+      box.innerHTML = html;
+    }
+
+    function toggleAllMeetings(checkState) {
+      document.querySelectorAll('#calendar-meeting-checklist input[type="checkbox"]').forEach(cb => {
+        cb.checked = checkState;
+      });
+      updateReportPreview();
+    }
+
+    // 動態組裝週報預覽內容
+    function updateReportPreview() {
+      if (!rawAppData) return;
+
+      const groupType = document.getElementById('reportGroupSelect').value;
+      let groupName = groupType;
+      let roleLabel = '負責業務';
+
+      if (groupType === '專案經理') {
+        groupName = '專案經理室';
+        roleLabel = '主責專案／業務';
+      } else if (groupType === '剪輯組') {
+        roleLabel = '負責剪輯類型';
+      } else if (groupType === '維運組') {
+        roleLabel = '職務';
+      } else if (groupType === '課務組') {
+        roleLabel = '負責階段';
+      } else if (groupType === '__CUSTOM__') {
+        groupName = document.getElementById('customGroupName').value.trim() || '專案團隊';
+        roleLabel = document.getElementById('customRoleLabel').value.trim() || '職務';
+      }
+
+      const userName = document.getElementById('reportUserName').value.trim() || '（請填寫姓名）';
+      const userRole = document.getElementById('reportUserRole').value.trim() || '（請填寫職務）';
+      const today = new Date();
+      const dateStr = `${today.getFullYear()} 年 ${today.getMonth() + 1} 月 ${today.getDate()} 日`;
+
+      // 1. 上週未完成追蹤
+      let sec1 = '';
+      if (rawAppData.overdueTasks && rawAppData.overdueTasks.length > 0) {
+        rawAppData.overdueTasks.forEach((t, i) => {
+          sec1 += `${i + 1}. 【${t.project}】${t.title}（原截止日：${t.dueDate}，後續處理：${t.remarks || '持續推進中'}）\n`;
+        });
+      } else {
+        sec1 = '無（上週規劃事項皆已如期完成）\n';
+      }
+
+      // 2. 本週進度 (本週任務 + 本週勾選會議)
+      let sec2 = '| 本週執行事項 | 狀態 | 未完成原因與後續處理 |\n| :--- | :--- | :--- |\n';
+
+      // 加入本週勾選的會議
+      const selectedThisWeekMeetings = [];
+      const selectedNextWeekMeetings = [];
+      if (rawAppData.biWeeklyCalEvents) {
+        document.querySelectorAll('#calendar-meeting-checklist input[type="checkbox"]:checked').forEach(cb => {
+          const idx = parseInt(cb.getAttribute('data-idx'), 10);
+          const ev = rawAppData.biWeeklyCalEvents[idx];
+          if (ev) {
+            if (ev.isThisWeek) selectedThisWeekMeetings.push(ev);
+            else selectedNextWeekMeetings.push(ev);
+          }
+        });
+      }
+
+      selectedThisWeekMeetings.forEach(ev => {
+        sec2 += `| 【會議／行程】${ev.dateStr} ${ev.time} ${ev.title} | 已完成 | 準時出席並對焦業務 |\n`;
+      });
+
+      // 加入本週任務 (已完成 + 今日 + 進行中)
+      const thisWeekTasks = [
+        ...(rawAppData.completedTasks || []),
+        ...(rawAppData.todayTasks || []),
+        ...((rawAppData.upcomingTasks || []).filter(t => t.status === '進行中'))
+      ];
+
+      if (thisWeekTasks.length > 0) {
+        thisWeekTasks.forEach(t => {
+          const reason = t.status === '已完成' ? '-' : (t.remarks || '進行中，預計近期完成');
+          sec2 += `| 【${t.project}】${t.title} | ${t.status} | ${reason} |\n`;
+        });
+      }
+
+      if (selectedThisWeekMeetings.length === 0 && thisWeekTasks.length === 0) {
+        sec2 += '| 暫無本週登記項目 | 已完成 | - |\n';
+      }
+
+      // 3. 遇到的困難及預計處理方式（可多筆；維運組依範本格式沒有「關聯」欄）
+      let sec3 = '';
+      const isOpsGroup = (groupType === '維運組');
+      if (groupType === '剪輯組') {
+        sec3 = '| 困難／問題 | 影片／場次 | 預計處理方式 | 預計完成日 |\n| :--- | :--- | :--- | :--- |\n';
+      } else if (groupType === '課務組') {
+        sec3 = '| 困難／問題 | 課程／學校 | 預計處理方式 | 預計完成日 |\n| :--- | :--- | :--- | :--- |\n';
+      } else if (isOpsGroup) {
+        sec3 = '| 困難／問題 | 預計處理方式 | 預計完成日 |\n| :--- | :--- | :--- |\n';
+      } else {
+        sec3 = '| 困難／問題 | 關聯專案／對象 | 預計處理方式 | 預計完成日 |\n| :--- | :--- | :--- | :--- |\n';
+      }
+
+      const troubleEntries = collectTroubleEntries();
+      if (troubleEntries.length > 0) {
+        troubleEntries.forEach(e => {
+          if (isOpsGroup) {
+            sec3 += `| ${e.desc} | ${e.plan} | ${e.date} |\n`;
+          } else {
+            sec3 += `| ${e.desc} | ${e.target} | ${e.plan} | ${e.date} |\n`;
+          }
+        });
+      } else {
+        sec3 += isOpsGroup ? '| 無 | - | - |\n' : '| 無 | - | - | - |\n';
+      }
+
+      // 4. 下週規劃 (下週預定會議 + 未來待辦)
+      let sec4 = '| 下週規劃事項 | 狀態 | 備註與預計完成日 |\n| :--- | :--- | :--- |\n';
+      selectedNextWeekMeetings.forEach(ev => {
+        sec4 += `| 【預定會議】${ev.dateStr} ${ev.time} ${ev.title} | 未開始作業 | 準時出席 |\n`;
+      });
+
+      if (rawAppData.upcomingTasks && rawAppData.upcomingTasks.length > 0) {
+        rawAppData.upcomingTasks.forEach(t => {
+          sec4 += `| 【${t.project}】${t.title} | ${t.status || '未開始作業'} | 預計截止：${t.dueDate || '下週'} |\n`;
+        });
+      }
+
+      if (selectedNextWeekMeetings.length === 0 && (!rawAppData.upcomingTasks || rawAppData.upcomingTasks.length === 0)) {
+        sec4 += '| 常規業務維護與臨時交辦事項 | 進行中 | 依時程推進 |\n';
+      }
+
+      // 5. 工作量參考數據 (依組別呈現標準欄位)
+      let sec5 = '| 項目 | 本週 | 上週 |\n| :--- | :--- | :--- |\n';
+      if (groupType === '剪輯組') {
+        sec5 += '| 剪輯完成片數 |  |  |\n';
+        sec5 += '| 需重製／修改片數 |  |  |\n';
+        sec5 += '| 待處理累積片數（尚未開始作業） |  |  |\n';
+        sec5 += '| 錄影完成數（典範影片） |  |  |\n';
+        sec5 += '| 簡報美編完成數（典範影片） |  |  |\n';
+      } else if (groupType === '維運組') {
+        sec5 += '| 客服處理件數（不分管道） |  |  |\n';
+        sec5 += '| 待處理／追蹤中件數 |  |  |\n';
+        sec5 += '| 專案處理進度（填寫百分比） |  |  |\n';
+      } else if (groupType === '課務組') {
+        sec5 += '| 新媒合課程數 |  |  |\n';
+        sec5 += '| 課程異動件數 |  |  |\n';
+        sec5 += '| 尚待媒合課程數 |  |  |\n';
+        sec5 += '| 請假受理與預錄安排件數 |  |  |\n';
+      } else {
+        sec5 += `| 本週完成任務與會議數 | ${(rawAppData.completedTasks || []).length + selectedThisWeekMeetings.length} | - |\n`;
+        sec5 += `| 進行中／待跟進事項數 | ${(rawAppData.todayTasks || []).length + (rawAppData.upcomingTasks || []).length} | - |\n`;
+        sec5 += `| 專案推進整體完成率 | ${rawAppData.summary.overallRate}% | - |\n`;
+      }
+
+      const fullTitleGroup = groupType === '專案經理' ? '專案經理室' : groupName;
+      const roleTitleDisplay = groupType === '專案經理' ? '專案經理' : (groupName.endsWith('組') ? groupName.replace('組', '') + '人員' : groupName + '人員');
+
+      const fullReport = `115學年度 本土語文直播共學營運中心 ・ ${fullTitleGroup}
+${roleTitleDisplay}工作週報
+
+填表人：${userName}  |  ${roleLabel}：${userRole}  |  填表日期：${dateStr}
+
+==================================================
+01  上週未完成事項追蹤
+${sec1}
+==================================================
+02  本週進度
+${sec2}
+==================================================
+03  遇到的困難及預計處理方式
+${sec3}
+==================================================
+04  下週規劃
+${sec4}
+==================================================
+05  工作量參考數據（選填）
+${sec5}`;
+
+      document.getElementById('reportPreviewArea').value = fullReport;
+
+      const htmlPreviewBox = document.getElementById('reportHtmlPreview');
+      if (htmlPreviewBox) htmlPreviewBox.innerHTML = buildReportHtml_(fullReport);
+    }
+
+    // 組出檔名與寄送用的中繼資訊
+    function buildReportMeta() {
+      const groupType = document.getElementById('reportGroupSelect').value;
+      let groupName = groupType;
+      if (groupType === '__CUSTOM__') {
+        groupName = document.getElementById('customGroupName').value.trim() || '自訂組';
+      }
+      const userName = document.getElementById('reportUserName').value.trim() || '未填姓名';
+      const today = new Date();
+      const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      return { groupName: groupName, userName: userName, dateStr: dateStr };
+    }
+
+    // 計算本週一～本週五日期範圍標籤（純前端計算，例如 8/17-8/21）
+    function getWeekRangeLabelClient_() {
+      const now = new Date();
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const day = d.getDay();
+      const diffToMon = (day === 0 ? -6 : 1) - day;
+      const mon = new Date(d.getFullYear(), d.getMonth(), d.getDate() + diffToMon);
+      const fri = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 4);
+      const fmt = dt => `${dt.getMonth() + 1}/${dt.getDate()}`;
+      const fmtSafe = dt => `${String(dt.getMonth() + 1).padStart(2, '0')}${String(dt.getDate()).padStart(2, '0')}`;
+      return { label: fmt(mon) + '-' + fmt(fri), safe: fmtSafe(mon) + '-' + fmtSafe(fri) };
+    }
+
+    // 下載 Word 週報：完全在瀏覽器端組成「MS-Office HTML」格式並存成 .doc，
+    // 不需要呼叫伺服器把 Google 文件轉檔，所以不會再遇到 Drive 轉檔失敗的問題。
+    // Word / LibreOffice 開啟這種帶有 office 命名空間的 HTML 檔會直接視為一般 Word 文件。
+    function downloadWeeklyReportDocx() {
+      const text = document.getElementById('reportPreviewArea').value;
+      const meta = buildReportMeta();
+      const weekRange = getWeekRangeLabelClient_();
+      const area = document.getElementById('copyNoticeArea');
+
+      const weekHeading = `<p style="text-align:center;font-weight:bold;font-size:16pt;color:#3B6E8F;margin:0 0 6pt 0;">📅　${weekRange.label}　週報</p><hr style="border:none;border-top:1px solid #D0D5DB;margin:0 0 10pt 0;">`;
+      const bodyContent = weekHeading + buildReportHtml_(text);
+      const filename = `週報_${meta.groupName}_${meta.userName}_${weekRange.safe}.doc`;
+
+      const header = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+<head><meta charset='utf-8'><title>週報</title></head><body>`;
+      const footer = '</body></html>';
+      const sourceHtml = header + bodyContent + footer;
+
+      const blob = new Blob([String.fromCharCode(65279) + sourceHtml], { type: 'application/msword' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      area.innerHTML = '<span class="text-success"><i class="bi bi-check-circle-fill me-1"></i>Word 週報檔已下載完成！可直接用 Word 開啟。</span>';
+      setTimeout(() => { area.innerHTML = ''; }, 3500);
+    }
+
+    // ---- 一鍵複製 Word 格式（複製為含樣式的表格/標題，貼到 Word 或 Google 文件會保留格式） ----
+    function escapeReportHtml_(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
+
+    // 將週報純文字內容轉成含樣式的 HTML（顏色/表格樣式對齊 Word 範本），供複製到剪貼簿使用
+    function buildReportHtml_(reportText) {
+      const BLUE = '#3B6E8F', GRAY = '#7B847D', DARKGRAY = '#4A4A52', HEADER_SHADE = '#F2F5F2', BORDER = '#D0D5DB';
+      const lines = String(reportText || '').replace(/\r/g, '').split('\n');
+      let i = 0;
+      let html = '';
+
+      function renderTable(rows, hasHeader) {
+        let t = '<table style="border-collapse:collapse;width:100%;margin:4pt 0 12pt 0;">';
+        rows.forEach((row, ri) => {
+          t += '<tr>';
+          row.forEach(cell => {
+            const isHeader = hasHeader && ri === 0;
+            const bg = isHeader ? HEADER_SHADE : '#ffffff';
+            const fw = isHeader ? 'bold' : 'normal';
+            t += `<td style="border:1px solid ${BORDER};padding:4pt 6pt;background:${bg};font-weight:${fw};font-size:10.5pt;">${escapeReportHtml_(cell)}</td>`;
+          });
+          t += '</tr>';
+        });
+        t += '</table>';
+        return t;
+      }
+
+      const titleLines = [];
+      while (i < lines.length && !/^填表人/.test(lines[i].trim()) && !/^=+$/.test(lines[i].trim())) {
+        const t = lines[i].trim();
+        if (t) titleLines.push(t);
+        i++;
+      }
+      if (titleLines[0]) {
+        html += `<p style="text-align:center;font-weight:bold;font-size:12pt;color:${DARKGRAY};margin:0 0 2pt 0;">${escapeReportHtml_(titleLines[0])}</p>`;
+      }
+      if (titleLines[1]) {
+        html += `<p style="text-align:center;font-weight:bold;font-size:20pt;margin:0 0 6pt 0;">${escapeReportHtml_(titleLines[1])}</p>`;
+      }
+
+      if (i < lines.length && /^填表人/.test(lines[i].trim())) {
+        html += `<p style="text-align:center;font-weight:bold;font-size:11pt;color:${GRAY};margin:0 0 8pt 0;">${escapeReportHtml_(lines[i].trim())}</p>`;
+        i++;
+      }
+      html += `<hr style="border:none;border-top:1px solid ${BORDER};margin:6pt 0 10pt 0;">`;
+
+      let currentTableRows = null;
+      let currentSectionNum = '';
+      let section01Rows = [];
+      const flushTable = function () {
+        if (currentTableRows && currentTableRows.length > 0) {
+          html += renderTable(currentTableRows, true);
+        }
+        currentTableRows = null;
+      };
+      const flushSection01 = function () {
+        if (section01Rows.length > 0) {
+          html += renderTable(section01Rows.map(r => [r]), false);
+        }
+        section01Rows = [];
+      };
+
+      for (; i < lines.length; i++) {
+        const trimmed = lines[i].trim();
+        if (trimmed === '') continue;
+        if (/^=+$/.test(trimmed)) { flushTable(); flushSection01(); continue; }
+
+        const sectionMatch = trimmed.match(/^(\d{2})(\s+)(\S.*)$/);
+        if (sectionMatch) {
+          flushTable(); flushSection01();
+          currentSectionNum = sectionMatch[1];
+          html += `<p style="margin:14pt 0 6pt 0;"><span style="font-weight:bold;font-size:10.5pt;color:${BLUE};">${escapeReportHtml_(sectionMatch[1] + sectionMatch[2])}</span><span style="font-weight:bold;font-size:13pt;">${escapeReportHtml_(sectionMatch[3])}</span></p>`;
+          continue;
+        }
+
+        if (trimmed.charAt(0) === '|') {
+          if (/^\|[\s:\-|]+\|$/.test(trimmed)) continue;
+          const cells = trimmed.split('|').slice(1, -1).map(c => c.trim());
+          if (!currentTableRows) currentTableRows = [];
+          currentTableRows.push(cells);
+          continue;
+        }
+
+        if (currentSectionNum === '01') {
+          section01Rows.push(trimmed);
+          continue;
+        }
+
+        flushTable();
+        html += `<p style="margin:2pt 0;font-size:10.5pt;">${escapeReportHtml_(trimmed)}</p>`;
+      }
+      flushTable();
+      flushSection01();
+
+      return `<div style="font-family:Calibri,Arial,sans-serif;">${html}</div>`;
+    }
+
+    function copyWeeklyReportRichText() {
+      const text = document.getElementById('reportPreviewArea').value;
+      const html = buildReportHtml_(text);
+      const area = document.getElementById('copyNoticeArea');
+
+      if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+        const item = new ClipboardItem({
+          'text/html': new Blob([html], { type: 'text/html' }),
+          'text/plain': new Blob([text], { type: 'text/plain' })
+        });
+        navigator.clipboard.write([item]).then(() => {
+          area.innerHTML = '<span class="text-success"><i class="bi bi-check-circle-fill me-1"></i>已複製含格式的週報！直接貼到 Word 或 Google 文件即可保留標題、顏色與表格樣式。</span>';
+          setTimeout(() => { area.innerHTML = ''; }, 4500);
+        }).catch(() => {
+          // 瀏覽器不支援 HTML 複製時，退回純文字複製
+          navigator.clipboard.writeText(text).then(() => {
+            area.innerHTML = '<span class="text-warning"><i class="bi bi-info-circle-fill me-1"></i>此瀏覽器不支援格式複製，已改為複製純文字版本。</span>';
+            setTimeout(() => { area.innerHTML = ''; }, 4500);
+          });
+        });
+      } else {
+        navigator.clipboard.writeText(text).then(() => {
+          area.innerHTML = '<span class="text-warning"><i class="bi bi-info-circle-fill me-1"></i>此瀏覽器不支援格式複製，已改為複製純文字版本。</span>';
+          setTimeout(() => { area.innerHTML = ''; }, 4500);
+        });
+      }
     }
 
     window.onload = loadData;
