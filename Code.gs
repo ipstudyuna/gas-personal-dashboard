@@ -1,5 +1,8 @@
 /**
- * 個人視覺化工作儀表板 Web App (v4.7：獨立【⚠️ 逾期任務】頁籤 + 修復週期性任務展延)
+ * 個人視覺化工作儀表板 Web App
+ * v4.7：獨立【⚠️ 逾期任務】頁籤 + 修復週期性任務展延
+ * v4.8：內建多角色一鍵週報生成與雙週會議採集
+ * v4.9：週報一鍵輸出「下載 Word (.docx)」與「寫入我的雲端週報文件」功能
  */
 
 const DEFAULT_COLORS = ['#0d6efd', '#198754', '#6f42c1', '#fd7e14', '#0dcaf0', '#d63384'];
@@ -241,8 +244,16 @@ function calculateNextDueDate(baseDueDateStr, recurrence) {
 
   const nextDate = new Date(baseDate.getTime());
 
-  if (recurrence === '每週' || recurrence.includes('週')) {
+  if (recurrence === '每日' || recurrence.includes('日')) {
+    nextDate.setDate(nextDate.getDate() + 1);
+  } else if (recurrence === '每週' || recurrence.includes('週')) {
     nextDate.setDate(nextDate.getDate() + 7);
+  } else if (recurrence === '每季' || recurrence.includes('季')) {
+    const origDay = baseDate.getDate();
+    nextDate.setMonth(nextDate.getMonth() + 3);
+    if (nextDate.getDate() !== origDay) {
+      nextDate.setDate(0); // 避免月底日期溢位（例如 1/31 +3月），自動調整為該月最後一天
+    }
   } else if (recurrence === '每月' || recurrence.includes('月')) {
     const origDay = baseDate.getDate();
     nextDate.setMonth(nextDate.getMonth() + 1);
@@ -443,10 +454,104 @@ function fetchExternalIcsEvents(icalUrl, targetDate) {
   return events;
 }
 
+/**
+ * 取得「本週 + 下週」兩週期間的行事曆行程（供週報會議勾選使用）
+ * isWork 以簡易關鍵字判斷是否為工作相關行程，預設勾選
+ */
+function getBiWeeklyCalendarEvents(tz) {
+  const events = [];
+  const now = new Date();
+  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const day = d.getDay();
+  const diffToMon = (day === 0 ? -6 : 1) - day;
+
+  const thisMon = new Date(d.getFullYear(), d.getMonth(), d.getDate() + diffToMon, 0, 0, 0);
+  const thisSun = new Date(thisMon.getFullYear(), thisMon.getMonth(), thisMon.getDate() + 6, 23, 59, 59);
+  const nextMon = new Date(thisMon.getFullYear(), thisMon.getMonth(), thisMon.getDate() + 7, 0, 0, 0);
+  const nextSun = new Date(thisMon.getFullYear(), thisMon.getMonth(), thisMon.getDate() + 13, 23, 59, 59);
+
+  const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+  const workKeywordRegex = /[會研習專案課錄審排協調檢核訪討論工作坊培訓]/;
+
+  // 1. Google 主要日曆
+  try {
+    const cal = CalendarApp.getDefaultCalendar();
+    if (cal) {
+      const googleCalEvents = cal.getEvents(thisMon, nextSun);
+      googleCalEvents.forEach(e => {
+        const s = e.getStartTime();
+        const end = e.getEndTime();
+        const isAllDay = e.isAllDayEvent();
+        const dateStr = `${String(s.getMonth() + 1).padStart(2, '0')}/${String(s.getDate()).padStart(2, '0')} (${weekdays[s.getDay()]})`;
+        const timeStr = isAllDay ? '全天' : `${Utilities.formatDate(s, tz, 'HH:mm')} - ${Utilities.formatDate(end, tz, 'HH:mm')}`;
+        const title = String(e.getTitle() || '未命名行程');
+
+        const isNextWeek = s >= nextMon;
+        const isWork = workKeywordRegex.test(title);
+
+        events.push({
+          dateStr: dateStr,
+          dateIso: Utilities.formatDate(s, tz, 'yyyy-MM-dd'),
+          time: timeStr,
+          title: title,
+          location: String(e.getLocation() || ''),
+          source: '主要日曆',
+          isThisWeek: !isNextWeek,
+          isNextWeek: isNextWeek,
+          isWork: isWork
+        });
+      });
+    }
+  } catch (err) {
+    console.error('BiWeekly Google Cal error:', err);
+  }
+
+  // 2. 外部 iCal 日曆
+  try {
+    const ss = getSpreadsheet();
+    const setSheet = ss.getSheetByName("⚙️ 系統設定");
+    if (setSheet && setSheet.getLastRow() >= 2) {
+      const icalUrls = setSheet.getRange(2, 4, setSheet.getLastRow() - 1, 2).getDisplayValues();
+      icalUrls.forEach(urlRow => {
+        const [urlA, urlB] = urlRow.map(val => String(val || "").trim());
+        const url = urlA || urlB || "";
+        if (url && url.startsWith("http")) {
+          for (let i = 0; i < 14; i++) {
+            const targetD = new Date(thisMon.getFullYear(), thisMon.getMonth(), thisMon.getDate() + i);
+            const extEvents = fetchExternalIcsEvents(url, targetD);
+            const isNextWeek = i >= 7;
+            const dateStr = `${String(targetD.getMonth() + 1).padStart(2, '0')}/${String(targetD.getDate()).padStart(2, '0')} (${weekdays[targetD.getDay()]})`;
+
+            extEvents.forEach(ee => {
+              const isWork = workKeywordRegex.test(ee.title);
+              events.push({
+                dateStr: dateStr,
+                dateIso: Utilities.formatDate(targetD, tz, 'yyyy-MM-dd'),
+                time: ee.time,
+                title: ee.title,
+                location: ee.location,
+                source: '外部日曆',
+                isThisWeek: !isNextWeek,
+                isNextWeek: isNextWeek,
+                isWork: isWork
+              });
+            });
+          }
+        }
+      });
+    }
+  } catch (err) {
+    console.error('BiWeekly iCal error:', err);
+  }
+
+  return events.sort((a, b) => a.dateIso.localeCompare(b.dateIso));
+}
+
 function getWebAppDataJson() {
   const result = {
     summary: { totalProjects: 0, pendingTasks: 0, calCount: 0, overallRate: 0 },
     calEvents: [],
+    biWeeklyCalEvents: [],
     todayTasks: [],
     overdueTasks: [],
     upcomingTasks: [],
@@ -515,6 +620,13 @@ function getWebAppDataJson() {
 
   result.calEvents.sort((a, b) => a.startMin - b.startMin);
   result.summary.calCount = result.calEvents.length;
+
+  // 2b. 雙週（本週+下週）行事曆行程，供週報會議勾選使用
+  try {
+    result.biWeeklyCalEvents = getBiWeeklyCalendarEvents(tz);
+  } catch (err) {
+    console.error('biWeeklyCalEvents error:', err);
+  }
 
   // 3. 專案代表色 (使用解構賦值安全讀取)
   const colorMap = {};
@@ -740,5 +852,426 @@ function toggleTaskStatus(rowIndex, newStatus) {
     return '✅ 狀態已更新為：' + newStatus;
   } catch (err) {
     return '❌ 更新失敗：' + err.toString();
+  }
+}
+
+/* ============================================================
+ * 週報輸出功能 (v4.9)
+ * - generateWeeklyReportDocxBase64：將週報文字轉為 Word (.docx) 檔案並回傳 base64，供前端一鍵下載
+ * - appendReportToMyDoc / bindMyReportDoc / getMyReportDocInfo：
+ *   讓每位組員綁定「自己專屬」的 Google 文件，之後每次產出週報可一鍵寫入該文件的新頁面（累積存檔）
+ *
+ * 部署方式（適用「每人各自複製一份範本試算表、各自部署」的散布模式）：
+ *   執行身份 (Execute as)：我 (Me)
+ *   誰可以存取 (Who has access)：僅限我自己 (Only myself)
+ * 因為每個人都是用「自己的帳號」複製範本並部署，此時「以我身份執行」裡的「我」對每個人來說就是他自己，
+ * 且存取權限又限制成只有他自己能開啟，「操作者」與「執行身份」剛好是同一人，
+ * Session.getActiveUser() 才能正確拿到使用者 email，綁定機制才會生效。
+ *
+ * 這個功能第一次使用時，必須先手動授權 Google 文件 / 雲端硬碟權限，
+ * 否則會出現「你沒有呼叫「DocumentApp.xxx」的權限」錯誤。
+ * 解法：在 Apps Script 編輯器頂端的函式下拉選單選擇 authorizeReportFeatures，
+ * 按「執行」，跳出授權視窗後選擇帳號 → 進階 → 前往（不安全）→ 允許，即可。
+ * ============================================================ */
+
+/**
+ * 手動執行一次此函式即可觸發 Google 文件 / 雲端硬碟權限的授權視窗。
+ * 授權完成後，週報「下載 Word」與「寫入我的雲端週報文件」功能才能正常運作。
+ */
+function authorizeReportFeatures() {
+  const tempDoc = DocumentApp.create('__週報功能授權測試__' + new Date().getTime());
+  const id = tempDoc.getId();
+  tempDoc.saveAndClose();
+  DriveApp.getFileById(id).setTrashed(true);
+  Logger.log('✅ 授權成功！週報「下載 Word」與「寫入我的雲端週報文件」功能現在可以正常使用了。');
+}
+
+const REPORT_DOC_MAP_SHEET = '📄 週報文件對照';
+
+/**
+ * 從週報 Sheet 表對照表中，依 email 查詢已綁定的 Google 文件 ID
+ */
+function getUserReportDocId_(email) {
+  if (!email) return '';
+  const ss = getSpreadsheet();
+  const mapSheet = ss.getSheetByName(REPORT_DOC_MAP_SHEET);
+  if (!mapSheet) return '';
+  const lastRow = mapSheet.getLastRow();
+  if (lastRow < 2) return '';
+  const data = mapSheet.getRange(2, 1, lastRow - 1, 3).getValues();
+  for (let i = 0; i < data.length; i++) {
+    if (String(data[i][0]).trim().toLowerCase() === email.trim().toLowerCase()) {
+      return String(data[i][1]).trim();
+    }
+  }
+  return '';
+}
+
+/**
+ * 從網址或純 ID 字串中解析出 Google 文件 ID
+ */
+function extractDocId_(input) {
+  if (!input) return '';
+  const s = String(input).trim();
+  const m = s.match(/\/d\/([a-zA-Z0-9_-]{20,})/);
+  if (m) return m[1];
+  return s;
+}
+
+/**
+ * 取得目前登入者的週報文件綁定狀態
+ */
+function getMyReportDocInfo() {
+  const email = Session.getActiveUser().getEmail() || '';
+  if (!email) {
+    return {
+      bound: false,
+      email: '',
+      error: '無法取得您的登入身份。請確認此工具的部署設定為「執行身份：存取網頁應用程式的使用者」，且存取權限已限制為貴組織/網域內的登入使用者。'
+    };
+  }
+  const docId = getUserReportDocId_(email);
+  if (!docId) {
+    return { bound: false, email: email };
+  }
+  return {
+    bound: true,
+    email: email,
+    docId: docId,
+    url: 'https://docs.google.com/document/d/' + docId + '/edit'
+  };
+}
+
+/**
+ * 綁定（或更新）目前登入者專屬的週報 Google 文件
+ */
+function bindMyReportDoc(docUrlOrId, displayName) {
+  try {
+    const email = Session.getActiveUser().getEmail() || '';
+    if (!email) {
+      return { success: false, message: '無法取得您的登入身份，請確認部署設定（詳見程式碼註解）後再試一次。' };
+    }
+    const docId = extractDocId_(docUrlOrId);
+    if (!docId) {
+      return { success: false, message: '請輸入有效的 Google 文件連結。' };
+    }
+
+    // 驗證是否能開啟此文件（確認權限）
+    try {
+      DocumentApp.openById(docId);
+    } catch (e) {
+      return { success: false, message: '無法開啟此文件，請確認連結正確、且您對該文件有編輯權限：' + e.toString() };
+    }
+
+    const ss = getSpreadsheet();
+    let mapSheet = ss.getSheetByName(REPORT_DOC_MAP_SHEET);
+    if (!mapSheet) {
+      mapSheet = ss.insertSheet(REPORT_DOC_MAP_SHEET);
+      mapSheet.getRange('A1:D1').setValues([['Email', 'GoogleDocID', '姓名', '最後更新時間']])
+        .setFontWeight('bold').setBackground('#E8F0FE');
+    }
+
+    const lastRow = mapSheet.getLastRow();
+    let foundRow = -1;
+    if (lastRow >= 2) {
+      const emails = mapSheet.getRange(2, 1, lastRow - 1, 1).getValues();
+      for (let i = 0; i < emails.length; i++) {
+        if (String(emails[i][0]).trim().toLowerCase() === email.trim().toLowerCase()) {
+          foundRow = i + 2;
+          break;
+        }
+      }
+    }
+
+    if (foundRow > 0) {
+      mapSheet.getRange(foundRow, 2, 1, 3).setValues([[docId, displayName || '', new Date()]]);
+    } else {
+      mapSheet.appendRow([email, docId, displayName || '', new Date()]);
+    }
+
+    return { success: true, message: '綁定成功！之後點擊「寫入我的週報文件」即會自動將週報加到此文件的新頁面。' };
+  } catch (err) {
+    return { success: false, message: '綁定失敗：' + err.toString() };
+  }
+}
+
+/**
+ * 週報文件視覺樣式參數（配色參考組員提供的 Word 範本：藍灰色編號、灰色說明文字、淺灰表頭底色）
+ */
+var REPORT_STYLE_ = {
+  BLUE: '#3B6E8F',
+  GRAY: '#7B847D',
+  DARKGRAY: '#4A4A52',
+  HEADER_SHADE: '#F2F5F2',
+  BORDER_COLOR: '#D0D5DB'
+};
+
+/**
+ * 計算「本週一～本週五」的日期範圍標籤，例如 8/17-8/21
+ * label：人類可讀（含斜線），safe：檔名安全版本（不含斜線）
+ */
+function getWeekRangeLabel_(tz) {
+  const now = new Date();
+  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const day = d.getDay();
+  const diffToMon = (day === 0 ? -6 : 1) - day;
+  const mon = new Date(d.getFullYear(), d.getMonth(), d.getDate() + diffToMon);
+  const fri = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 4);
+  return {
+    label: Utilities.formatDate(mon, tz, 'M/d') + '-' + Utilities.formatDate(fri, tz, 'M/d'),
+    safe: Utilities.formatDate(mon, tz, 'MMdd') + '-' + Utilities.formatDate(fri, tz, 'MMdd')
+  };
+}
+
+/**
+ * 在文件最上方插入本次週報的日期範圍標題（做為「這是哪一週」的頁面標記）
+ */
+function appendWeekRangeHeading_(body, weekRangeLabel) {
+  const p = body.appendParagraph('📅　' + weekRangeLabel + '　週報');
+  p.setHeading(DocumentApp.ParagraphHeading.HEADING1);
+  p.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+  p.editAsText().setForegroundColor(REPORT_STYLE_.BLUE);
+  body.appendHorizontalRule();
+}
+
+/**
+ * 統一套用表格樣式：細邊框 + 表頭列淺灰底色與粗體（headerRowIndex 傳 -1 表示不需要表頭樣式）
+ */
+function styleReportTable_(table, headerRowIndex) {
+  try {
+    table.setBorderWidth(1);
+    table.setBorderColor(REPORT_STYLE_.BORDER_COLOR);
+  } catch (e) { /* ignore */ }
+
+  if (headerRowIndex !== null && headerRowIndex >= 0 && table.getNumRows() > headerRowIndex) {
+    const headerRow = table.getRow(headerRowIndex);
+    for (let c = 0; c < headerRow.getNumCells(); c++) {
+      const cell = headerRow.getCell(c);
+      cell.setBackgroundColor(REPORT_STYLE_.HEADER_SHADE);
+      const cellText = cell.editAsText();
+      const len = cellText.getText().length;
+      if (len > 0) cellText.setBold(0, len - 1, true);
+    }
+  }
+}
+
+/**
+ * 將週報文字內容渲染進 Google 文件的 Body（標題／表格／段落），並套上跟組員範本一致的視覺樣式
+ * reportText 格式為 updateReportPreview() 產出的純文字週報（含 Markdown 表格語法）
+ * 01 章節（上週未完成事項）會渲染成單欄表格，02～05 章節的 Markdown 表格會渲染成有表頭底色的表格
+ */
+function renderReportIntoBody_(body, reportText) {
+  const S = REPORT_STYLE_;
+  const lines = String(reportText || '').replace(/\r/g, '').split('\n');
+  let i = 0;
+
+  // 1. 開頭標題區（第一個「填表人」或分隔線之前的行）
+  const titleLines = [];
+  while (i < lines.length && !/^填表人/.test(lines[i].trim()) && !/^=+$/.test(lines[i].trim())) {
+    const t = lines[i].trim();
+    if (t) titleLines.push(t);
+    i++;
+  }
+  if (titleLines.length > 0) {
+    const roleP = body.appendParagraph(titleLines[0]);
+    roleP.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+    const roleText = roleP.editAsText();
+    roleText.setBold(true);
+    roleText.setFontSize(9);
+    roleText.setForegroundColor(S.DARKGRAY);
+  }
+  if (titleLines.length > 1) {
+    const titleP = body.appendParagraph(titleLines[1]);
+    titleP.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+    const titleText = titleP.editAsText();
+    titleText.setBold(true);
+    titleText.setFontSize(17);
+  }
+
+  // 2. 填表人 meta 行
+  if (i < lines.length && /^填表人/.test(lines[i].trim())) {
+    const metaP = body.appendParagraph(lines[i].trim());
+    metaP.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+    const metaText = metaP.editAsText();
+    metaText.setBold(true);
+    metaText.setFontSize(10);
+    metaText.setForegroundColor(S.GRAY);
+    i++;
+  }
+
+  body.appendHorizontalRule();
+
+  // 3. 依 "======" 分隔的各章節內容
+  let currentTableRows = null;
+  let currentSectionNum = '';
+  let section01Rows = [];
+
+  const flushTable = function () {
+    if (currentTableRows && currentTableRows.length > 0) {
+      const table = body.appendTable(currentTableRows);
+      styleReportTable_(table, 0);
+    }
+    currentTableRows = null;
+  };
+
+  const flushSection01 = function () {
+    if (section01Rows.length > 0) {
+      const rows = section01Rows.map(function (r) { return [r]; });
+      const table = body.appendTable(rows);
+      styleReportTable_(table, -1);
+    }
+    section01Rows = [];
+  };
+
+  for (; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+
+    if (trimmed === '') { continue; }
+    if (/^=+$/.test(trimmed)) { flushTable(); flushSection01(); continue; }
+
+    // 章節標題，如「01  上週未完成事項追蹤」：編號用藍灰色小字，標題用黑色粗體大字
+    const sectionMatch = trimmed.match(/^(\d{2})(\s+)(\S.*)$/);
+    if (sectionMatch) {
+      flushTable();
+      flushSection01();
+      currentSectionNum = sectionMatch[1];
+
+      const h = body.appendParagraph(trimmed);
+      h.setSpacingBefore(16);
+      h.setSpacingAfter(6);
+      const numLen = sectionMatch[1].length + sectionMatch[2].length;
+      const text = h.editAsText();
+      text.setBold(0, trimmed.length - 1, true);
+      text.setFontSize(0, numLen - 1, 10);
+      text.setForegroundColor(0, numLen - 1, S.BLUE);
+      text.setFontSize(numLen, trimmed.length - 1, 13);
+      continue;
+    }
+
+    // Markdown 表格列
+    if (trimmed.charAt(0) === '|') {
+      if (/^\|[\s:\-|]+\|$/.test(trimmed)) { continue; } // 分隔列 | :--- | :--- |
+      const cells = trimmed.split('|').slice(1, -1).map(function (c) { return c.trim(); });
+      if (!currentTableRows) currentTableRows = [];
+      currentTableRows.push(cells);
+      continue;
+    }
+
+    // 01 章節的自由文字（上週未完成事項清單）渲染成單欄表格，與範本樣式一致
+    if (currentSectionNum === '01') {
+      section01Rows.push(trimmed);
+      continue;
+    }
+
+    flushTable();
+    body.appendParagraph(trimmed);
+  }
+  flushTable();
+  flushSection01();
+}
+
+/**
+ * （已停用）原本用 DocumentApp + DriveApp.getAs(MimeType.MICROSOFT_WORD) 產生 .docx 的做法，
+ * 會偶發「無法從 application/vnd.google-apps.document 轉換成 ...wordprocessingml.document」錯誤。
+ * 目前「下載 Word 週報」改成前端直接組成 MS-Office HTML 存成 .doc（見 Index.html 的
+ * downloadWeeklyReportDocx()），不需要伺服器轉檔，也就不會再遇到這個問題。
+ * 這個函式保留起來，若之後想改回產生「真正的」.docx 二進位檔，可以再接回來用。
+ */
+function generateWeeklyReportDocxBase64_DEPRECATED(reportText, meta) {
+  meta = meta || {};
+  let tempDoc = null;
+  try {
+    const tz = Session.getScriptTimeZone() || 'Asia/Taipei';
+    const weekRange = getWeekRangeLabel_(tz);
+    const safeUserName = (meta.userName || '週報').replace(/[\\\/:*?"<>|]/g, '');
+    const safeGroupName = (meta.groupName || '').replace(/[\\\/:*?"<>|]/g, '');
+
+    tempDoc = DocumentApp.create('週報暫存_' + safeUserName + '_' + new Date().getTime());
+    const body = tempDoc.getBody();
+    body.clear();
+    appendWeekRangeHeading_(body, weekRange.label);
+    renderReportIntoBody_(body, reportText);
+    tempDoc.saveAndClose();
+
+    const fileId = tempDoc.getId();
+    let docxBlob = null;
+    let lastErr = null;
+    for (let attempt = 0; attempt < 4 && !docxBlob; attempt++) {
+      try {
+        Utilities.sleep(attempt === 0 ? 1000 : 1500);
+        docxBlob = DriveApp.getFileById(fileId).getAs(MimeType.MICROSOFT_WORD);
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+    if (!docxBlob) {
+      throw lastErr || new Error('轉換為 Word 檔失敗（未知原因）');
+    }
+
+    const base64 = Utilities.base64Encode(docxBlob.getBytes());
+    const filename = `週報_${safeGroupName}_${safeUserName}_${weekRange.safe}.docx`;
+    DriveApp.getFileById(fileId).setTrashed(true);
+
+    return {
+      success: true,
+      base64: base64,
+      filename: filename,
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    };
+  } catch (err) {
+    if (tempDoc) {
+      try { DriveApp.getFileById(tempDoc.getId()).setTrashed(true); } catch (e2) {}
+    }
+    return { success: false, message: '產生 Word 檔失敗：' + err.toString() };
+  }
+}
+
+/**
+ * 將本次週報，以「新頁面」的方式附加寫入目前登入者已綁定的專屬 Google 文件，
+ * 並在該頁最上方自動標註本週日期範圍（例如 8/17-8/21）做為頁面標記
+ */
+function appendReportToMyDoc(reportText, meta) {
+  meta = meta || {};
+  try {
+    const email = Session.getActiveUser().getEmail() || '';
+    if (!email) {
+      return { success: false, message: '無法取得您的登入身份，請確認部署設定後再試一次。' };
+    }
+
+    const docId = getUserReportDocId_(email);
+    if (!docId) {
+      return { success: false, needBind: true, message: '尚未綁定您的專屬週報文件，請先在上方貼上您的 Google 文件連結並綁定。' };
+    }
+
+    let doc;
+    try {
+      doc = DocumentApp.openById(docId);
+    } catch (e) {
+      return { success: false, message: '無法開啟已綁定的文件，請確認您仍有該文件的編輯權限：' + e.toString() };
+    }
+
+    const tz = Session.getScriptTimeZone() || 'Asia/Taipei';
+    const weekRange = getWeekRangeLabel_(tz);
+
+    const body = doc.getBody();
+    if (body.getNumChildren() > 0) {
+      body.appendPageBreak();
+    }
+    appendWeekRangeHeading_(body, weekRange.label);
+    renderReportIntoBody_(body, reportText);
+    doc.saveAndClose();
+
+    // 同步更新對照表中的姓名，方便日後辨識
+    if (meta.userName) {
+      bindMyReportDoc(docId, meta.userName);
+    }
+
+    return {
+      success: true,
+      message: `已成功將 ${weekRange.label} 週報寫入您的專屬文件（新頁面）！`,
+      url: 'https://docs.google.com/document/d/' + docId + '/edit'
+    };
+  } catch (err) {
+    return { success: false, message: '寫入失敗：' + err.toString() };
   }
 }
